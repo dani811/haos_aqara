@@ -14,7 +14,13 @@ _FRONTEND_DIR = Path(__file__).parent / "frontend"
 async def async_register_frontend(hass: HomeAssistant) -> None:
     """Serve and load the bundled Lovelace card once per HA process."""
     await hass.http.async_register_static_paths(
-        [StaticPathConfig(FRONTEND_URL_PATH, str(_FRONTEND_DIR), True)]
+        [
+            StaticPathConfig(
+                FRONTEND_URL_PATH,
+                str(_FRONTEND_DIR),
+                cache_headers=True,
+            )
+        ]
     )
 
     module_urls = hass.data[DATA_EXTRA_MODULE_URL]
