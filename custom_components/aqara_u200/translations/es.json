@@ -1,0 +1,27 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurar Aqara U200",
+        "description": "Configura la cerradura manualmente. Se recomienda el descubrimiento Bluetooth cuando esté disponible.",
+        "data": {
+          "address": "Dirección Bluetooth",
+          "device_id": "ID de dispositivo Aqara",
+          "region": "Región Aqara"
+        }
+      },
+      "confirm": {
+        "title": "Configurar {name}",
+        "description": "Confirma la cerradura detectada e indica su ID de dispositivo Aqara.",
+        "data": {
+          "device_id": "ID de dispositivo Aqara",
+          "region": "Región Aqara"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Esta cerradura ya está configurada.",
+      "discovery_info_missing": "La información de descubrimiento Bluetooth ya no está disponible."
+    }
+  }
+}
