@@ -1,0 +1,17 @@
+{
+  "domain": "aqara_u200",
+  "name": "Aqara U200 BLE",
+  "version": "0.1.0-dev.1",
+  "config_flow": true,
+  "documentation": "https://github.com/dani811/haos_aqara",
+  "issue_tracker": "https://github.com/dani811/haos_aqara/issues",
+  "codeowners": ["@dani811"],
+  "integration_type": "device",
+  "dependencies": ["bluetooth_adapters", "frontend", "http"],
+  "bluetooth": [
+    {
+      "service_uuid": "0000fcb9-0000-1000-8000-00805f9b34fb",
+      "connectable": true
+    }
+  ]
+}
