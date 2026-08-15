@@ -4,29 +4,31 @@ Tests are gates: a behavior-changing task is not complete until its unit tests p
 
 ## Phase 1 - Runtime contracts
 
-- [ ] T001 Add integration-owned exception hierarchy.
-- [ ] T002 Add `AqaraU200Client` protocol.
-- [ ] T003 Add `PendingAqaraU200Client` with `control_enabled=False` and no BLE/cloud side effects.
-- [ ] T004 Add unit tests for pending backend behavior.
+- [x] T001 Add integration-owned exception hierarchy.
+- [x] T002 Add `AqaraU200Client` protocol.
+- [x] T003 Add `PendingAqaraU200Client` with `control_enabled=False` and no BLE/cloud side effects.
+- [x] T004 Add unit tests for pending backend behavior.
 
 ## Phase 2 - Bluetooth runtime
 
-- [ ] T005 Add `AqaraU200BluetoothManager` using HA shared Bluetooth lookup.
-- [ ] T006 Register configured-address discovery callback and unavailable tracker; ensure unload cleanup.
-- [ ] T007 Add immutable Bluetooth/runtime state snapshots.
-- [ ] T008 Add push-based `AqaraU200Coordinator` without polling.
-- [ ] T009 Add per-entry `asyncio.Lock` to serialize HA actions.
-- [ ] T010 Add unit tests for reachability transitions, proxy-transparent lookup contract, operation state and serialization.
+- [x] T005 Add `AqaraU200BluetoothManager` using HA shared Bluetooth lookup.
+- [x] T006 Register configured-address discovery callback and unavailable tracker; ensure unload cleanup.
+- [x] T007 Add immutable Bluetooth/runtime state snapshots.
+- [x] T008 Add push-based `AqaraU200Coordinator` without polling.
+- [x] T009 Add per-entry `asyncio.Lock` to serialize HA actions.
+- [x] T010 Add unit tests for reachability transitions, proxy-transparent lookup contract, operation state and serialization.
 
 ## Phase 3 - Native entity + config entry lifecycle
 
-- [ ] T011 Expand typed `ConfigEntry.runtime_data` with Bluetooth manager, client and coordinator.
-- [ ] T012 Forward the lock platform during setup and unload it during teardown.
-- [ ] T013 Add native `AqaraU200Lock` entity with stable identifiers/device info.
-- [ ] T014 Keep entity unavailable when BLE is unreachable OR `control_enabled=False`.
-- [ ] T015 Update diagnostics with sanitized runtime state and redacted identifiers.
-- [ ] T016 Add config-entry/entity integration tests.
-- [ ] T017 Add CI/test configuration and run complete regression suite.
+- [x] T011 Expand typed `ConfigEntry.runtime_data` with Bluetooth manager, client and coordinator.
+- [x] T012 Forward the lock platform during setup and unload it during teardown.
+- [x] T013 Add native `AqaraU200Lock` entity with stable identifiers/device info.
+- [x] T014 Keep entity unavailable when BLE is unreachable OR `control_enabled=False`.
+- [x] T015 Update diagnostics with sanitized runtime state and redacted identifiers.
+- [x] T016 Add config-entry/entity integration tests.
+- [x] T017 Add CI/test configuration and run complete regression suite.
+
+**Phase 1-3 validation gate**: GitHub Actions passed on Python 3.14.7 with Home Assistant 2026.8.1; `14 passed` on the complete runtime suite.
 
 ## Phase 4 - Real protocol adapter (BLOCKED)
 
