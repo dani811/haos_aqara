@@ -1,0 +1,27 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Aqara U200",
+        "description": "Configure the lock manually. Bluetooth discovery is preferred when available.",
+        "data": {
+          "address": "Bluetooth address",
+          "device_id": "Aqara device ID",
+          "region": "Aqara region"
+        }
+      },
+      "confirm": {
+        "title": "Set up {name}",
+        "description": "Confirm the discovered lock and provide its Aqara device ID.",
+        "data": {
+          "device_id": "Aqara device ID",
+          "region": "Aqara region"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This lock is already configured.",
+      "discovery_info_missing": "Bluetooth discovery information is no longer available."
+    }
+  }
+}
