@@ -74,6 +74,35 @@ async def test_same_entry_operations_are_serialized(hass) -> None:
     assert coordinator.data.last_operation == "lock"
 
 
+async def test_different_entries_can_operate_concurrently(hass) -> None:
+    """Per-entry locks must not serialize different physical locks."""
+    first_client = BlockingClient()
+    second_client = BlockingClient()
+    first_coordinator = AqaraU200Coordinator(
+        hass, _entry(), FakeBluetoothManager(), first_client
+    )
+    second_coordinator = AqaraU200Coordinator(
+        hass, _entry(), FakeBluetoothManager(), second_client
+    )
+
+    first_task = asyncio.create_task(first_coordinator.async_unlock())
+    second_task = asyncio.create_task(second_coordinator.async_unlock())
+
+    await asyncio.wait_for(
+        asyncio.gather(
+            first_client.first_started.wait(), second_client.first_started.wait()
+        ),
+        timeout=1,
+    )
+
+    assert first_coordinator.operation_in_progress is True
+    assert second_coordinator.operation_in_progress is True
+
+    first_client.release_first.set()
+    second_client.release_first.set()
+    await asyncio.gather(first_task, second_task)
+
+
 async def test_operation_state_resets_after_error(hass) -> None:
     """An error must not leave HA-side operation state stuck busy."""
     coordinator = AqaraU200Coordinator(
@@ -87,3 +116,24 @@ async def test_operation_state_resets_after_error(hass) -> None:
     assert coordinator.operation_in_progress is False
     assert coordinator.data.operation_in_progress is False
     assert coordinator.data.last_error_type == "RuntimeError"
+
+
+async def test_cancellation_releases_operation_state_and_lock(hass) -> None:
+    """Cancellation must not leave this config entry permanently busy."""
+    client = BlockingClient()
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+
+    task = asyncio.create_task(coordinator.async_unlock())
+    await client.first_started.wait()
+    assert coordinator.operation_in_progress is True
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert coordinator.operation_in_progress is False
+    assert coordinator.data.operation_in_progress is False
+
+    # Prove the asyncio.Lock itself was also released by executing another action.
+    await coordinator.async_lock()
+    assert client.calls == ["unlock", "lock"]
