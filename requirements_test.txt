@@ -1,1 +1,3 @@
 pytest-homeassistant-custom-component==0.13.355
+aiousbwatcher==1.1.2
+serialx==1.8.2
