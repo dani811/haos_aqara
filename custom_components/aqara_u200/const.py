@@ -2,9 +2,16 @@
 
 DOMAIN = "aqara_u200"
 
+CONF_ACCOUNT = "account"
+CONF_APP_ID = "appid"
+CONF_APP_KEY = "appkey"
+CONF_CLIENT_ID = "client_id"
 CONF_DEVICE_ID = "device_id"
+CONF_DISTRICT = "district"
+CONF_PHONE_ID = "phone_id"
 CONF_REGION = "region"
 
+DEFAULT_DISTRICT = "ES"
 DEFAULT_REGION = "EU"
 SUPPORTED_REGIONS = ("EU", "US", "CN")
 

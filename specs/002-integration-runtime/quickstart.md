@@ -14,14 +14,13 @@ python -m pytest tests -vv
 
 Expected result: all tests pass before Phase 3 is marked complete.
 
-## Scenario A - Pending backend fails closed
+## Scenario A - Real adapter wiring
 
-1. Configure an Aqara U200 entry.
-2. Load the integration without a real `aqara-u200-ble` adapter.
-3. Verify a native lock entity is created.
-4. Verify the entity is unavailable and no control operation is sent.
+1. Configure an Aqara U200 entry with explicit cloud credentials.
+2. Verify the integration constructs `CloudAuthManager` without reading environment variables.
+3. Verify each lock/unlock action resolves the device through Home Assistant, creates a fresh connector client, calls `U200Client.from_gatt()`, and disconnects.
 
-Expected: configuration/runtime can load safely; actuation remains disabled.
+Expected: only confirmed lock/unlock operations are exposed and `is_locked` remains unknown rather than optimistic.
 
 ## Scenario B - Bluetooth reachability
 
@@ -46,6 +45,6 @@ Inspect config-entry diagnostics.
 
 Expected: diagnostics contain only sanitized runtime metadata. Full `device_id`, account credentials, tokens, session material, raw HTTP data, cryptographic material and raw BLE payloads are absent.
 
-## Hardware validation
+## Distribution and hardware validation
 
-Deferred until Phase 4. Do not use this slice to execute real lock/unlock commands.
+Before installation validation, publish `aqara-u200-ble==0.5.0` to the Python package index; the Git tag alone is not installable from a Home Assistant manifest. Physical lock/unlock validation through Bluetooth Proxy remains a controlled manual gate and is not run by automated tests.

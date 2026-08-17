@@ -1,13 +1,17 @@
 """Tests for the push runtime coordinator."""
 
 import asyncio
+from unittest.mock import patch
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.aqara_u200.bluetooth import AqaraU200BluetoothState
 from custom_components.aqara_u200.coordinator import AqaraU200Coordinator
-from custom_components.aqara_u200.exceptions import AqaraU200OperationError
+from custom_components.aqara_u200.exceptions import (
+    AqaraU200AuthenticationError,
+    AqaraU200OperationError,
+)
 
 
 class FakeBluetoothManager:
@@ -46,6 +50,18 @@ class FailingClient:
 
     async def async_unlock(self) -> None:
         raise RuntimeError("unsafe-detail-must-not-be-copied")
+
+
+class AuthFailingClient:
+    """Enabled client that asks Home Assistant to start reauth."""
+
+    control_enabled = True
+
+    async def async_lock(self) -> None:
+        raise AqaraU200AuthenticationError("sanitized")
+
+    async def async_unlock(self) -> None:
+        raise AqaraU200AuthenticationError("sanitized")
 
 
 def _entry() -> MockConfigEntry:
@@ -116,6 +132,23 @@ async def test_operation_state_resets_after_error(hass) -> None:
     assert coordinator.operation_in_progress is False
     assert coordinator.data.operation_in_progress is False
     assert coordinator.data.last_error_type == "RuntimeError"
+
+
+async def test_auth_failure_starts_config_entry_reauth(hass) -> None:
+    """A typed auth failure should launch one HA reauthentication flow."""
+    entry = _entry()
+    coordinator = AqaraU200Coordinator(
+        hass, entry, FakeBluetoothManager(), AuthFailingClient()
+    )
+
+    with (
+        patch.object(entry, "async_start_reauth") as start_reauth,
+        pytest.raises(AqaraU200AuthenticationError),
+    ):
+        await coordinator.async_lock()
+
+    start_reauth.assert_called_once_with(hass)
+    assert coordinator.data.last_error_type == "AqaraU200AuthenticationError"
 
 
 async def test_cancellation_releases_operation_state_and_lock(hass) -> None:

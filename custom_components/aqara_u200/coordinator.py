@@ -1,10 +1,10 @@
 """Runtime coordinator for Aqara U200."""
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
-import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -14,6 +14,7 @@ from .bluetooth import AqaraU200BluetoothManager, AqaraU200BluetoothState
 from .client import AqaraU200Client
 from .const import DOMAIN
 from .exceptions import (
+    AqaraU200AuthenticationError,
     AqaraU200BluetoothUnavailableError,
     AqaraU200Error,
     AqaraU200OperationError,
@@ -55,6 +56,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         )
         self.bluetooth_manager = bluetooth_manager
         self.client = client
+        self._entry = entry
         self._operation_lock = asyncio.Lock()
         self._operation_in_progress = False
         self._last_operation: str | None = None
@@ -99,6 +101,10 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
 
             try:
                 await action()
+            except AqaraU200AuthenticationError as err:
+                self._last_error_type = type(err).__name__
+                self._entry.async_start_reauth(self.hass)
+                raise
             except AqaraU200Error as err:
                 self._last_error_type = type(err).__name__
                 raise

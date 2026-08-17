@@ -7,7 +7,14 @@
         "data": {
           "address": "Dirección Bluetooth",
           "device_id": "ID de dispositivo Aqara",
-          "region": "Región Aqara"
+          "region": "Región Aqara",
+          "account": "Cuenta Aqara",
+          "password": "Contraseña de Aqara",
+          "appid": "ID de aplicación Aqara",
+          "appkey": "Clave de aplicación Aqara",
+          "client_id": "ID de cliente Aqara",
+          "phone_id": "ID de teléfono Aqara",
+          "district": "Distrito de la cuenta Aqara"
         }
       },
       "confirm": {
@@ -15,13 +22,38 @@
         "description": "Confirma la cerradura detectada e indica su ID de dispositivo Aqara.",
         "data": {
           "device_id": "ID de dispositivo Aqara",
-          "region": "Región Aqara"
+          "region": "Región Aqara",
+          "account": "Cuenta Aqara",
+          "password": "Contraseña de Aqara",
+          "appid": "ID de aplicación Aqara",
+          "appkey": "Clave de aplicación Aqara",
+          "client_id": "ID de cliente Aqara",
+          "phone_id": "ID de teléfono Aqara",
+          "district": "Distrito de la cuenta Aqara"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Volver a autenticar la cuenta Aqara",
+        "description": "Introduce las credenciales de Aqara Cloud necesarias para controlar la cerradura.",
+        "data": {
+          "account": "Cuenta Aqara",
+          "password": "Contraseña de Aqara",
+          "appid": "ID de aplicación Aqara",
+          "appkey": "Clave de aplicación Aqara",
+          "client_id": "ID de cliente Aqara",
+          "phone_id": "ID de teléfono Aqara",
+          "district": "Distrito de la cuenta Aqara"
         }
       }
     },
+    "error": {
+      "invalid_auth": "Aqara ha rechazado estas credenciales.",
+      "cannot_connect": "No se pudieron validar las credenciales con Aqara Cloud."
+    },
     "abort": {
       "already_configured": "Esta cerradura ya está configurada.",
-      "discovery_info_missing": "La información de descubrimiento Bluetooth ya no está disponible."
+      "discovery_info_missing": "La información de descubrimiento Bluetooth ya no está disponible.",
+      "reauth_successful": "Las credenciales de Aqara se han actualizado correctamente."
     }
   }
 }

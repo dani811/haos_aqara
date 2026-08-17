@@ -7,7 +7,14 @@
         "data": {
           "address": "Bluetooth address",
           "device_id": "Aqara device ID",
-          "region": "Aqara region"
+          "region": "Aqara region",
+          "account": "Aqara account",
+          "password": "Aqara password",
+          "appid": "Aqara app ID",
+          "appkey": "Aqara app key",
+          "client_id": "Aqara client ID",
+          "phone_id": "Aqara phone ID",
+          "district": "Aqara account district"
         }
       },
       "confirm": {
@@ -15,13 +22,38 @@
         "description": "Confirm the discovered lock and provide its Aqara device ID.",
         "data": {
           "device_id": "Aqara device ID",
-          "region": "Aqara region"
+          "region": "Aqara region",
+          "account": "Aqara account",
+          "password": "Aqara password",
+          "appid": "Aqara app ID",
+          "appkey": "Aqara app key",
+          "client_id": "Aqara client ID",
+          "phone_id": "Aqara phone ID",
+          "district": "Aqara account district"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Aqara account",
+        "description": "Enter the Aqara cloud credentials required for authenticated lock control.",
+        "data": {
+          "account": "Aqara account",
+          "password": "Aqara password",
+          "appid": "Aqara app ID",
+          "appkey": "Aqara app key",
+          "client_id": "Aqara client ID",
+          "phone_id": "Aqara phone ID",
+          "district": "Aqara account district"
         }
       }
     },
+    "error": {
+      "invalid_auth": "Aqara rejected these credentials.",
+      "cannot_connect": "Could not validate the credentials with Aqara Cloud."
+    },
     "abort": {
       "already_configured": "This lock is already configured.",
-      "discovery_info_missing": "Bluetooth discovery information is no longer available."
+      "discovery_info_missing": "Bluetooth discovery information is no longer available.",
+      "reauth_successful": "Aqara credentials were updated successfully."
     }
   }
 }
