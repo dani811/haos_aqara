@@ -22,6 +22,13 @@ async def test_diagnostics_redact_identifiers_and_secrets(hass) -> None:
     entry = SimpleNamespace(
         title="Aqara U200",
         version=1,
+        data={
+            "account": "account-secret@example.com",
+            "password": "password-secret",
+            "appkey": "app-key-secret",
+            "client_id": "client-id-secret",
+            "phone_id": "phone-id-secret",
+        },
         runtime_data=SimpleNamespace(
             address=full_address,
             device_id=full_device_id,
@@ -35,5 +42,7 @@ async def test_diagnostics_redact_identifiers_and_secrets(hass) -> None:
 
     assert full_address not in rendered
     assert full_device_id not in rendered
+    assert "password-secret" not in rendered
+    assert "app-key-secret" not in rendered
     assert diagnostics["runtime"]["reachable"] is True
     assert diagnostics["runtime"]["control_enabled"] is False

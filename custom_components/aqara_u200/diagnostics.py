@@ -47,8 +47,6 @@ async def async_get_config_entry_diagnostics(
             "last_error_type": state.last_error_type,
         },
         "control_blocker": (
-            None
-            if state.control_enabled
-            else "real protocol adapter intentionally not enabled"
+            None if state.control_enabled else "control adapter unavailable"
         ),
     }

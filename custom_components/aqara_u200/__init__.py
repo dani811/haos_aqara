@@ -5,10 +5,11 @@ from dataclasses import dataclass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.typing import ConfigType
 
 from .bluetooth import AqaraU200BluetoothManager
-from .client import AqaraU200Client, PendingAqaraU200Client
+from .client import AqaraU200BleClientAdapter, AqaraU200Client, build_cloud_auth
 from .const import CONF_DEVICE_ID, CONF_REGION, DEFAULT_REGION
 from .coordinator import AqaraU200Coordinator
 from .frontend import async_register_frontend
@@ -39,19 +40,28 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: AqaraU200ConfigEntry) -> bool:
-    """Set up an Aqara U200 config entry without enabling unsafe actuation."""
+    """Set up an Aqara U200 config entry."""
     address = entry.data[CONF_ADDRESS]
     bluetooth_manager = AqaraU200BluetoothManager(hass, address)
 
-    # Deliberately fail closed until aqara-u200-ble publishes the async-safe
-    # cloud/session behavior and a real adapter is pinned here.
-    client: AqaraU200Client = PendingAqaraU200Client()
+    try:
+        auth = build_cloud_auth(entry.data)
+    except KeyError as err:
+        raise ConfigEntryAuthFailed(
+            "Aqara cloud credentials are incomplete; reauthentication is required"
+        ) from err
+
+    device_id = entry.data[CONF_DEVICE_ID]
+    region = entry.data.get(CONF_REGION, DEFAULT_REGION)
+    client: AqaraU200Client = AqaraU200BleClientAdapter(
+        bluetooth_manager, auth, device_id, region
+    )
     coordinator = AqaraU200Coordinator(hass, entry, bluetooth_manager, client)
 
     entry.runtime_data = AqaraU200RuntimeData(
         address=address,
-        device_id=entry.data[CONF_DEVICE_ID],
-        region=entry.data.get(CONF_REGION, DEFAULT_REGION),
+        device_id=device_id,
+        region=region,
         bluetooth=bluetooth_manager,
         client=client,
         coordinator=coordinator,

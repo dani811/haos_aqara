@@ -3,10 +3,8 @@
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import Any
 
 from bleak.backends.device import BLEDevice
-
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant, callback
 

@@ -2,19 +2,42 @@
 
 from unittest.mock import AsyncMock, Mock, patch
 
+import pytest
+from homeassistant.const import CONF_ADDRESS, CONF_PASSWORD
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.aqara_u200 import async_setup_entry, async_unload_entry
-from custom_components.aqara_u200.client import PendingAqaraU200Client
-from custom_components.aqara_u200.const import CONF_DEVICE_ID, CONF_REGION, DOMAIN
-from custom_components.aqara_u200.lock import async_setup_entry as async_setup_lock_entry
-from homeassistant.const import CONF_ADDRESS
+from custom_components.aqara_u200.client import AqaraU200BleClientAdapter
+from custom_components.aqara_u200.const import (
+    CONF_ACCOUNT,
+    CONF_APP_ID,
+    CONF_APP_KEY,
+    CONF_CLIENT_ID,
+    CONF_DEVICE_ID,
+    CONF_DISTRICT,
+    CONF_PHONE_ID,
+    CONF_REGION,
+    DOMAIN,
+)
+from custom_components.aqara_u200.lock import (
+    async_setup_entry as async_setup_lock_entry,
+)
 
 ADDRESS = "AA:BB:CC:DD:EE:FF"
+AUTH_DATA = {
+    CONF_ACCOUNT: "account@example.com",
+    CONF_PASSWORD: "password",
+    CONF_APP_ID: "app-id",
+    CONF_APP_KEY: "app-key",
+    CONF_CLIENT_ID: "client-id",
+    CONF_PHONE_ID: "phone-id",
+    CONF_DISTRICT: "ES",
+}
 
 
-async def test_setup_builds_fail_closed_runtime_and_forwards_lock(hass) -> None:
-    """Config entry should wire runtime without importing real protocol backend."""
+async def test_setup_builds_real_runtime_and_forwards_lock(hass) -> None:
+    """Config entry should wire the released protocol adapter."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Aqara U200",
@@ -22,6 +45,7 @@ async def test_setup_builds_fail_closed_runtime_and_forwards_lock(hass) -> None:
             CONF_ADDRESS: ADDRESS,
             CONF_DEVICE_ID: "device-1234",
             CONF_REGION: "EU",
+            **AUTH_DATA,
         },
     )
     entry.add_to_hass(hass)
@@ -50,13 +74,38 @@ async def test_setup_builds_fail_closed_runtime_and_forwards_lock(hass) -> None:
     ):
         assert await async_setup_entry(hass, entry) is True
 
-    assert isinstance(entry.runtime_data.client, PendingAqaraU200Client)
-    assert entry.runtime_data.coordinator.data.control_enabled is False
+    assert isinstance(entry.runtime_data.client, AqaraU200BleClientAdapter)
+    assert entry.runtime_data.coordinator.data.control_enabled is True
     forward.assert_awaited_once()
 
 
-async def test_runtime_and_lock_platform_integrate_fail_closed(hass) -> None:
-    """Runtime wiring and native entity must integrate without enabling actuation."""
+async def test_setup_requests_reauth_for_legacy_entry_without_credentials(hass) -> None:
+    """An entry from the pending-backend revision fails into HA reauth cleanly."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Aqara U200",
+        data={
+            CONF_ADDRESS: ADDRESS,
+            CONF_DEVICE_ID: "device-legacy",
+            CONF_REGION: "EU",
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.aqara_u200.bluetooth.bluetooth.async_ble_device_from_address",
+            return_value=None,
+        ),
+        pytest.raises(ConfigEntryAuthFailed) as error,
+    ):
+        await async_setup_entry(hass, entry)
+
+    assert "credentials" in str(error.value)
+
+
+async def test_runtime_and_lock_platform_integrate(hass) -> None:
+    """Runtime wiring and native entity expose confirmed operations when reachable."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Aqara U200",
@@ -64,6 +113,7 @@ async def test_runtime_and_lock_platform_integrate_fail_closed(hass) -> None:
             CONF_ADDRESS: ADDRESS,
             CONF_DEVICE_ID: "device-5678",
             CONF_REGION: "EU",
+            **AUTH_DATA,
         },
     )
     entry.add_to_hass(hass)
@@ -96,10 +146,9 @@ async def test_runtime_and_lock_platform_integrate_fail_closed(hass) -> None:
     entity = entities[0]
     assert entity.coordinator is entry.runtime_data.coordinator
     assert entity.unique_id == f"{ADDRESS}_lock"
-    # BLE is reachable, but the pending protocol client deliberately fails closed.
     assert entry.runtime_data.coordinator.data.reachable is True
-    assert entry.runtime_data.coordinator.data.control_enabled is False
-    assert entity.available is False
+    assert entry.runtime_data.coordinator.data.control_enabled is True
+    assert entity.available is True
 
 
 async def test_unload_unloads_platforms(hass) -> None:

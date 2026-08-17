@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.aqara_u200.bluetooth import AqaraU200BluetoothState
-from custom_components.aqara_u200.client import PendingAqaraU200Client
 from custom_components.aqara_u200.coordinator import AqaraU200Coordinator
 from custom_components.aqara_u200.lock import AqaraU200Lock
 
@@ -48,19 +47,6 @@ def _entity(hass, *, reachable: bool, client):
     return AqaraU200Lock(entry, coordinator), coordinator
 
 
-async def test_pending_backend_keeps_entity_unavailable(hass) -> None:
-    """Entity may exist, but it must fail closed until real adapter is ready."""
-    entity, _ = _entity(
-        hass, reachable=True, client=PendingAqaraU200Client()
-    )
-
-    assert entity.available is False
-    assert entity.is_locked is None
-    assert entity.unique_id == f"{ADDRESS}_lock"
-    assert entity.device_info["manufacturer"] == "Aqara"
-    assert entity.device_info["model"] == "U200"
-
-
 async def test_unreachable_device_keeps_enabled_entity_unavailable(hass) -> None:
     """An enabled backend must still fail closed when HA cannot reach BLE."""
     entity, _ = _entity(hass, reachable=False, client=EnabledClient())
@@ -74,6 +60,10 @@ async def test_reachable_enabled_entity_delegates_actions(hass) -> None:
     entity, _ = _entity(hass, reachable=True, client=client)
 
     assert entity.available is True
+    assert entity.is_locked is None
+    assert entity.unique_id == f"{ADDRESS}_lock"
+    assert entity.device_info["manufacturer"] == "Aqara"
+    assert entity.device_info["model"] == "U200"
 
     await entity.async_unlock()
     await entity.async_lock()

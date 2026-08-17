@@ -6,8 +6,8 @@ Tests are gates: a behavior-changing task is not complete until its unit tests p
 
 - [x] T001 Add integration-owned exception hierarchy.
 - [x] T002 Add `AqaraU200Client` protocol.
-- [x] T003 Add `PendingAqaraU200Client` with `control_enabled=False` and no BLE/cloud side effects.
-- [x] T004 Add unit tests for pending backend behavior.
+- [x] T003 Keep entities isolated behind the integration-owned client protocol.
+- [x] T004 Add unit tests for client-boundary behavior and sanitized failures.
 
 ## Phase 2 - Bluetooth runtime
 
@@ -30,18 +30,20 @@ Tests are gates: a behavior-changing task is not complete until its unit tests p
 
 **Phase 1-3 validation gate**: GitHub Actions passed on Python 3.14.7 with Home Assistant 2026.8.1; `14 passed` on the complete runtime suite.
 
-## Phase 4 - Real protocol adapter (BLOCKED)
+## Phase 4 - Real protocol adapter
 
-- [ ] T018 Wait for async-safe `aqara-u200-ble` release/revision.
-- [ ] T019 Pin exact released dependency.
-- [ ] T020 Implement `AqaraU200BleClientAdapter`; BLE remains on HA event loop, only library-owned blocking cloud calls are offloaded by the library.
-- [ ] T021 Map library concurrency/cloud/auth/BLE errors without leaking secrets.
-- [ ] T022 Enable confirmed lock/unlock only.
+- [x] T018 Use the async-safe `aqara-u200-ble` v0.5.0 release/tag.
+- [x] T019 Pin `aqara-u200-ble==0.5.0` in `manifest.json`.
+- [x] T020 Implement `AqaraU200BleClientAdapter`; BLE remains on HA event loop, only library-owned blocking cloud calls are offloaded by the library.
+- [x] T021 Map library concurrency/cloud/auth/BLE errors without leaking secrets.
+- [x] T022 Enable confirmed lock/unlock only, without optimistic state.
 - [ ] T023 Validate against physical U200 over Bluetooth Proxy.
+- [x] T024 Add explicit config-flow credential collection and reauth; do not use production environment variables.
+- [ ] T025 Publish the `aqara-u200-ble==0.5.0` distribution to the Python package index so Home Assistant can install the manifest requirement.
 
 ## Not To Do
 
-- Do not implement real actuation before T018-T021.
+- Do not run destructive or unattended hardware actuation as an automated gate.
 - Do not add direct Git/revision dependency as a production requirement merely to unblock development.
 - Do not add own BLE scanning.
 - Do not persist session keys.
