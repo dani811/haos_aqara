@@ -6,15 +6,20 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .bluetooth import AqaraU200BluetoothManager
 from .client import AqaraU200BleClientAdapter, AqaraU200Client, build_cloud_auth
-from .const import CONF_DEVICE_ID, CONF_REGION, DEFAULT_REGION
+from .const import CONF_DEVICE_ID, CONF_REGION, DEFAULT_REGION, DOMAIN
 from .coordinator import AqaraU200Coordinator
 from .frontend import async_register_frontend
 
 PLATFORMS: tuple[Platform, ...] = (Platform.LOCK,)
+
+# This integration is configured through the UI (config entries) only; it takes
+# no YAML configuration under its domain.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 @dataclass(slots=True)
