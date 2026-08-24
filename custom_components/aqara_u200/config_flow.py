@@ -64,10 +64,11 @@ def _auth_schema(*, include_all: bool = True) -> dict[vol.Marker, Any]:
 
 
 def _entry_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
-    """Normalize non-password text while preserving password bytes exactly."""
+    """Normalize non-password text; skip non-string fields (e.g. the toggle)."""
     return {
         key: value if key == CONF_PASSWORD else value.strip()
         for key, value in user_input.items()
+        if isinstance(value, str)
     }
 
 
@@ -149,6 +150,11 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(
                 title=self._discovered_name,
                 data=data,
+                options={
+                    CONF_REALTIME_STATE: user_input.get(
+                        CONF_REALTIME_STATE, DEFAULT_REALTIME_STATE
+                    )
+                },
             )
 
         return self.async_show_form(
@@ -182,6 +188,11 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(
                 title=f"Aqara U200 {address}",
                 data=data,
+                options={
+                    CONF_REALTIME_STATE: user_input.get(
+                        CONF_REALTIME_STATE, DEFAULT_REALTIME_STATE
+                    )
+                },
             )
 
         return self.async_show_form(
@@ -234,6 +245,9 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
                     SUPPORTED_REGIONS
                 ),
                 **_auth_schema(),
+                vol.Required(
+                    CONF_REALTIME_STATE, default=DEFAULT_REALTIME_STATE
+                ): bool,
             }
         )
 
@@ -247,6 +261,9 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
                     SUPPORTED_REGIONS
                 ),
                 **_auth_schema(),
+                vol.Required(
+                    CONF_REALTIME_STATE, default=DEFAULT_REALTIME_STATE
+                ): bool,
             }
         )
 

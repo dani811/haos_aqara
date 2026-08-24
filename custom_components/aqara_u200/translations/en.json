@@ -9,7 +9,8 @@
           "device_id": "Aqara device ID",
           "region": "Aqara region",
           "account": "Aqara account (email or phone)",
-          "password": "Aqara password"
+          "password": "Aqara password",
+          "realtime_state": "Real-time BLE state (uses more lock battery)"
         }
       },
       "confirm": {
@@ -19,7 +20,8 @@
           "device_id": "Aqara device ID",
           "region": "Aqara region",
           "account": "Aqara account (email or phone)",
-          "password": "Aqara password"
+          "password": "Aqara password",
+          "realtime_state": "Real-time BLE state (uses more lock battery)"
         }
       },
       "reauth_confirm": {

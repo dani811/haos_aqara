@@ -9,7 +9,8 @@
           "device_id": "ID de dispositivo Aqara",
           "region": "Región Aqara",
           "account": "Cuenta Aqara (correo o teléfono)",
-          "password": "Contraseña de Aqara"
+          "password": "Contraseña de Aqara",
+          "realtime_state": "Estado BLE en tiempo real (gasta más batería de la cerradura)"
         }
       },
       "confirm": {
@@ -19,7 +20,8 @@
           "device_id": "ID de dispositivo Aqara",
           "region": "Región Aqara",
           "account": "Cuenta Aqara (correo o teléfono)",
-          "password": "Contraseña de Aqara"
+          "password": "Contraseña de Aqara",
+          "realtime_state": "Estado BLE en tiempo real (gasta más batería de la cerradura)"
         }
       },
       "reauth_confirm": {
