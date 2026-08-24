@@ -7,9 +7,14 @@ from typing import Any, override
 
 import voluptuous as vol
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.const import CONF_ADDRESS, CONF_PASSWORD
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.selector import (
     TextSelector,
     TextSelectorConfig,
@@ -25,7 +30,9 @@ from .client import (
 from .const import (
     CONF_ACCOUNT,
     CONF_DEVICE_ID,
+    CONF_REALTIME_STATE,
     CONF_REGION,
+    DEFAULT_REALTIME_STATE,
     DEFAULT_REGION,
     DOMAIN,
     SUPPORTED_REGIONS,
@@ -92,6 +99,14 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._discovered_address: str | None = None
         self._discovered_name = "Aqara U200"
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: ConfigEntry,
+    ) -> AqaraU200OptionsFlow:
+        """Return the options flow (real-time BLE state toggle)."""
+        return AqaraU200OptionsFlow()
 
     @override
     async def async_step_bluetooth(
@@ -233,4 +248,25 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
                 ),
                 **_auth_schema(),
             }
+        )
+
+
+class AqaraU200OptionsFlow(OptionsFlow):
+    """Options: opt in to a persistent real-time BLE state session."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Toggle the real-time BLE state session (off by default)."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        current = self.config_entry.options.get(
+            CONF_REALTIME_STATE, DEFAULT_REALTIME_STATE
+        )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_REALTIME_STATE, default=current): bool}
+            ),
         )

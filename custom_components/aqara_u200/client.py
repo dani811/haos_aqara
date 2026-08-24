@@ -71,6 +71,10 @@ class AqaraU200Client(Protocol):
         """Unlock the device; return the real bolt position if observed."""
         ...
 
+    async def async_read_state(self, listen_after: float) -> bool | None:
+        """Read the real bolt position over BLE without actuating."""
+        ...
+
 
 def build_cloud_auth(config: Mapping[str, Any]) -> CloudAuthManager:
     """Build library-owned cloud auth from Home Assistant config-entry data.
@@ -146,7 +150,18 @@ class AqaraU200BleClientAdapter:
         """Run one confirmed unlock operation without actuation retries."""
         return await self._async_operate("unlock")
 
-    async def _async_operate(self, operation: str) -> bool | None:
+    async def async_read_state(self, listen_after: float) -> bool | None:
+        """Non-actuating: open a session and read the real ff62 bolt position.
+
+        Sends only the read-only keepalive and listens ``listen_after`` seconds
+        for a spontaneous ff62 report (a change made from anywhere). Returns the
+        observed position, or None if nothing was pushed in the window.
+        """
+        return await self._async_operate("listen", listen_after=listen_after)
+
+    async def _async_operate(
+        self, operation: str, *, listen_after: float = _STATE_LISTEN_SECONDS
+    ) -> bool | None:
         """Connect, execute once, read the real state, and release the client.
 
         Returns the bolt position read from the ff62 report channel during the
@@ -178,10 +193,11 @@ class AqaraU200BleClientAdapter:
                 region=self._region,
             )
             operation_started = True
-            result = await protocol_client.operate(
-                LockOperation.LOCK if operation == "lock" else LockOperation.UNLOCK,
-                listen_after=_STATE_LISTEN_SECONDS,
-            )
+            op = {
+                "lock": LockOperation.LOCK,
+                "unlock": LockOperation.UNLOCK,
+            }.get(operation, LockOperation.KEEPALIVE)
+            result = await protocol_client.operate(op, listen_after=listen_after)
             observed_locked = result.observed_locked
         except asyncio.CancelledError:
             raise

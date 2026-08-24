@@ -8,6 +8,15 @@ CONF_ACCOUNT = "account"
 CONF_DEVICE_ID = "device_id"
 CONF_REGION = "region"
 
+# Opt-in: keep a persistent BLE session listening for real-time state (ff62),
+# including external changes (Matter/key/keypad). Costs extra lock battery.
+CONF_REALTIME_STATE = "realtime_state"
+DEFAULT_REALTIME_STATE = False
+#: Real-time mode: listen this long per BLE window, then reconnect. Bounded so
+#: an actuation never waits more than one window for the shared connection.
+REALTIME_WINDOW_SECONDS = 25.0
+REALTIME_GAP_SECONDS = 2.0
+
 DEFAULT_REGION = "EU"
 SUPPORTED_REGIONS = ("EU", "US", "CN")
 

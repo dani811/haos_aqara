@@ -49,5 +49,16 @@
     "sensor": {
       "rssi": { "name": "Intensidad de señal" }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opciones de Aqara U200",
+        "description": "El **estado BLE en tiempo real** mantiene una conexión Bluetooth persistente con la cerradura para que Home Assistant vea al instante los cambios hechos fuera de esta integración (Matter, llave o teclado). Consume más batería de la cerradura. Déjalo DESACTIVADO si ya obtienes el estado por Matter — la cerradura seguirá actualizando su estado tras cada bloqueo/desbloqueo hecho desde aquí.",
+        "data": {
+          "realtime_state": "Estado BLE en tiempo real (gasta más batería de la cerradura)"
+        }
+      }
+    }
   }
 }

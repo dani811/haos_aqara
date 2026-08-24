@@ -11,7 +11,14 @@ from homeassistant.helpers.typing import ConfigType
 
 from .bluetooth import AqaraU200BluetoothManager
 from .client import AqaraU200BleClientAdapter, AqaraU200Client, build_cloud_auth
-from .const import CONF_DEVICE_ID, CONF_REGION, DEFAULT_REGION, DOMAIN
+from .const import (
+    CONF_DEVICE_ID,
+    CONF_REALTIME_STATE,
+    CONF_REGION,
+    DEFAULT_REALTIME_STATE,
+    DEFAULT_REGION,
+    DOMAIN,
+)
 from .coordinator import AqaraU200Coordinator
 from .frontend import async_register_frontend
 
@@ -80,7 +87,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: AqaraU200ConfigEntry) ->
         bluetooth_manager.async_start(coordinator.async_handle_bluetooth_state)
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Opt-in real-time BLE state (persistent listen). Off by default.
+    entry.async_on_unload(coordinator.async_stop_realtime)
+    if entry.options.get(CONF_REALTIME_STATE, DEFAULT_REALTIME_STATE):
+        coordinator.async_start_realtime()
+    entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
     return True
+
+
+async def _async_reload_on_options(
+    hass: HomeAssistant, entry: AqaraU200ConfigEntry
+) -> None:
+    """Reload the entry when options (the real-time toggle) change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: AqaraU200ConfigEntry) -> bool:

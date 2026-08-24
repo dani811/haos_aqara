@@ -49,5 +49,16 @@
     "sensor": {
       "rssi": { "name": "Signal strength" }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Aqara U200 options",
+        "description": "**Real-time BLE state** keeps a persistent Bluetooth connection open to the lock so Home Assistant sees changes made outside this integration (Matter, key or keypad) instantly. It reads more battery from the lock. Leave it OFF if you already get state from Matter — the lock still updates its state after every lock/unlock done from here.",
+        "data": {
+          "realtime_state": "Real-time BLE state (uses more lock battery)"
+        }
+      }
+    }
   }
 }
