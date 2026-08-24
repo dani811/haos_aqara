@@ -10,6 +10,7 @@ from aqara_ble import (
     CloudAuthManager,
     CloudServiceError,
     FlowPhase,
+    LockOperation,
     OperationInProgressError,
     U200ClientError,
 )
@@ -40,6 +41,9 @@ from .exceptions import (
 _LOGGER = logging.getLogger(__name__)
 _CONNECTION_NAME = "Aqara U200"
 _DISCONNECT_TIMEOUT = 10
+#: Seconds to keep the session open after an actuation to read the lock's real
+#: bolt position from the ff62 report channel.
+_STATE_LISTEN_SECONDS = 3.0
 
 AUTH_CONFIG_KEYS = (
     CONF_ACCOUNT,
@@ -59,12 +63,12 @@ class AqaraU200Client(Protocol):
         """Return whether real lock control is safe and enabled."""
         ...
 
-    async def async_lock(self) -> None:
-        """Lock the device."""
+    async def async_lock(self) -> bool | None:
+        """Lock the device; return the real bolt position if observed."""
         ...
 
-    async def async_unlock(self) -> None:
-        """Unlock the device."""
+    async def async_unlock(self) -> bool | None:
+        """Unlock the device; return the real bolt position if observed."""
         ...
 
 
@@ -134,16 +138,21 @@ class AqaraU200BleClientAdapter:
         """Confirmed lock and unlock operations are enabled."""
         return True
 
-    async def async_lock(self) -> None:
+    async def async_lock(self) -> bool | None:
         """Run one confirmed lock operation without actuation retries."""
-        await self._async_operate("lock")
+        return await self._async_operate("lock")
 
-    async def async_unlock(self) -> None:
+    async def async_unlock(self) -> bool | None:
         """Run one confirmed unlock operation without actuation retries."""
-        await self._async_operate("unlock")
+        return await self._async_operate("unlock")
 
-    async def _async_operate(self, operation: str) -> None:
-        """Connect freshly, execute once, and always release the BLE client."""
+    async def _async_operate(self, operation: str) -> bool | None:
+        """Connect, execute once, read the real state, and release the client.
+
+        Returns the bolt position read from the ff62 report channel during the
+        post-command listen window (True locked / False unlocked / None if the
+        lock pushed nothing in time).
+        """
         ble_device = self._bluetooth_manager.async_get_ble_device()
         if ble_device is None:
             raise AqaraU200BluetoothUnavailableError(
@@ -152,6 +161,7 @@ class AqaraU200BleClientAdapter:
 
         bleak_client: BleakClientWithServiceCache | None = None
         operation_started = False
+        observed_locked: bool | None = None
         try:
             bleak_client = await establish_connection(
                 BleakClientWithServiceCache,
@@ -168,10 +178,11 @@ class AqaraU200BleClientAdapter:
                 region=self._region,
             )
             operation_started = True
-            if operation == "lock":
-                await protocol_client.lock()
-            else:
-                await protocol_client.unlock()
+            result = await protocol_client.operate(
+                LockOperation.LOCK if operation == "lock" else LockOperation.UNLOCK,
+                listen_after=_STATE_LISTEN_SECONDS,
+            )
+            observed_locked = result.observed_locked
         except asyncio.CancelledError:
             raise
         except Exception as err:
@@ -211,3 +222,5 @@ class AqaraU200BleClientAdapter:
                     _LOGGER.debug(
                         "Aqara U200 BLE disconnect failed (%s)", type(err).__name__
                     )
+
+        return observed_locked

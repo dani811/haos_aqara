@@ -87,7 +87,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
     async def _async_run_operation(
         self,
         operation: str,
-        action: Callable[[], Awaitable[None]],
+        action: Callable[[], Awaitable[bool | None]],
     ) -> None:
         """Run one HA operation at a time for this config entry."""
         async with self._operation_lock:
@@ -103,10 +103,10 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             self.async_set_updated_data(self._build_snapshot(state))
 
             try:
-                await action()
-                # Optimistic: the actuation was confirmed (no error), so reflect
-                # the commanded bolt position until a real state read lands.
-                self._is_locked = operation == "lock"
+                observed = await action()
+                # Prefer the real bolt position read from the lock (ff62 report);
+                # fall back to the optimistic commanded position if none arrived.
+                self._is_locked = observed if observed is not None else operation == "lock"
             except AqaraU200AuthenticationError as err:
                 self._last_error_type = type(err).__name__
                 self._entry.async_start_reauth(self.hass)

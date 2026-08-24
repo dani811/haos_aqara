@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from aqara_ble import CloudServiceError
+from aqara_ble import CloudServiceError, LockOperation
 from bleak_retry_connector import BleakConnectionError
 
 from custom_components.aqara_u200.client import AqaraU200BleClientAdapter
@@ -26,7 +26,9 @@ async def test_adapter_uses_fresh_ha_routed_connection_per_operation() -> None:
     manager.async_get_ble_device.return_value = ble_device
     first_connection = SimpleNamespace(disconnect=AsyncMock())
     second_connection = SimpleNamespace(disconnect=AsyncMock())
-    protocol_client = SimpleNamespace(lock=AsyncMock(), unlock=AsyncMock())
+    protocol_client = SimpleNamespace(
+        operate=AsyncMock(return_value=SimpleNamespace(observed_locked=None))
+    )
 
     with (
         patch(
@@ -45,8 +47,9 @@ async def test_adapter_uses_fresh_ha_routed_connection_per_operation() -> None:
     assert adapter.control_enabled is True
     assert connect.await_count == 2
     assert from_gatt.call_count == 2
-    protocol_client.lock.assert_awaited_once_with()
-    protocol_client.unlock.assert_awaited_once_with()
+    assert protocol_client.operate.await_count == 2
+    assert protocol_client.operate.await_args_list[0].args[0] is LockOperation.LOCK
+    assert protocol_client.operate.await_args_list[1].args[0] is LockOperation.UNLOCK
     first_connection.disconnect.assert_awaited_once_with()
     second_connection.disconnect.assert_awaited_once_with()
     _, first_device, _ = connect.await_args_list[0].args
@@ -99,9 +102,7 @@ async def test_adapter_maps_invalid_auth_and_disconnects() -> None:
     )
     wrapped_error = RuntimeError("raw-wrapper")
     wrapped_error.__cause__ = cloud_error
-    protocol_client = SimpleNamespace(
-        lock=AsyncMock(side_effect=wrapped_error), unlock=AsyncMock()
-    )
+    protocol_client = SimpleNamespace(operate=AsyncMock(side_effect=wrapped_error))
 
     with (
         patch(
@@ -117,7 +118,7 @@ async def test_adapter_maps_invalid_auth_and_disconnects() -> None:
         await _adapter(manager).async_lock()
 
     assert "raw" not in str(error.value)
-    protocol_client.lock.assert_awaited_once_with()
+    protocol_client.operate.assert_awaited_once()
     connection.disconnect.assert_awaited_once_with()
 
 
@@ -127,7 +128,7 @@ async def test_adapter_never_retries_after_operation_starts() -> None:
     manager.async_get_ble_device.return_value = object()
     connection = SimpleNamespace(disconnect=AsyncMock())
     protocol_client = SimpleNamespace(
-        lock=AsyncMock(), unlock=AsyncMock(side_effect=RuntimeError("raw-crypto"))
+        operate=AsyncMock(side_effect=RuntimeError("raw-crypto"))
     )
 
     with (
@@ -145,5 +146,5 @@ async def test_adapter_never_retries_after_operation_starts() -> None:
 
     assert "raw-crypto" not in str(error.value)
     connect.assert_awaited_once()
-    protocol_client.unlock.assert_awaited_once_with()
+    protocol_client.operate.assert_awaited_once()
     connection.disconnect.assert_awaited_once_with()
