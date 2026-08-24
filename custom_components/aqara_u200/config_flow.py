@@ -19,14 +19,8 @@ from homeassistant.helpers.selector import (
 from .client import AUTH_CONFIG_KEYS, async_validate_cloud_auth, is_invalid_auth_error
 from .const import (
     CONF_ACCOUNT,
-    CONF_APP_ID,
-    CONF_APP_KEY,
-    CONF_CLIENT_ID,
     CONF_DEVICE_ID,
-    CONF_DISTRICT,
-    CONF_PHONE_ID,
     CONF_REGION,
-    DEFAULT_DISTRICT,
     DEFAULT_REGION,
     DOMAIN,
     SUPPORTED_REGIONS,
@@ -43,22 +37,18 @@ _NON_EMPTY_PASSWORD = vol.All(_PASSWORD_SELECTOR, vol.Length(min=1))
 
 
 def _auth_schema(*, include_all: bool = True) -> dict[vol.Marker, Any]:
-    """Return auth fields, masking the password in the frontend."""
-    fields: dict[vol.Marker, Any] = {
+    """Return the Aqara account fields (account + masked password).
+
+    Only account + password are collected: aqara-ble bakes the app-global
+    appid/appkey and generates the per-install phone_id/client_id, so the user
+    never has to supply values captured from the app. ``include_all`` is kept for
+    signature stability but no longer changes the fields.
+    """
+    del include_all
+    return {
         vol.Required(CONF_ACCOUNT): _NON_EMPTY_TEXT,
         vol.Required(CONF_PASSWORD): _NON_EMPTY_PASSWORD,
     }
-    if include_all:
-        fields.update(
-            {
-                vol.Required(CONF_APP_ID): _NON_EMPTY_TEXT,
-                vol.Required(CONF_APP_KEY): _NON_EMPTY_PASSWORD,
-                vol.Required(CONF_CLIENT_ID): _NON_EMPTY_TEXT,
-                vol.Required(CONF_PHONE_ID): _NON_EMPTY_TEXT,
-                vol.Required(CONF_DISTRICT, default=DEFAULT_DISTRICT): _NON_EMPTY_TEXT,
-            }
-        )
-    return fields
 
 
 def _entry_data(user_input: Mapping[str, Any]) -> dict[str, Any]:

@@ -8,41 +8,26 @@
           "address": "Bluetooth address",
           "device_id": "Aqara device ID",
           "region": "Aqara region",
-          "account": "Aqara account",
-          "password": "Aqara password",
-          "appid": "Aqara app ID",
-          "appkey": "Aqara app key",
-          "client_id": "Aqara client ID",
-          "phone_id": "Aqara phone ID",
-          "district": "Aqara account district"
+          "account": "Aqara account (email or phone)",
+          "password": "Aqara password"
         }
       },
       "confirm": {
         "title": "Set up {name}",
-        "description": "Confirm the discovered lock and provide its Aqara device ID.",
+        "description": "Confirm the discovered lock and provide its Aqara device ID and your account.",
         "data": {
           "device_id": "Aqara device ID",
           "region": "Aqara region",
-          "account": "Aqara account",
-          "password": "Aqara password",
-          "appid": "Aqara app ID",
-          "appkey": "Aqara app key",
-          "client_id": "Aqara client ID",
-          "phone_id": "Aqara phone ID",
-          "district": "Aqara account district"
+          "account": "Aqara account (email or phone)",
+          "password": "Aqara password"
         }
       },
       "reauth_confirm": {
         "title": "Reauthenticate Aqara account",
-        "description": "Enter the Aqara cloud credentials required for authenticated lock control.",
+        "description": "Enter your Aqara account and password.",
         "data": {
-          "account": "Aqara account",
-          "password": "Aqara password",
-          "appid": "Aqara app ID",
-          "appkey": "Aqara app key",
-          "client_id": "Aqara client ID",
-          "phone_id": "Aqara phone ID",
-          "district": "Aqara account district"
+          "account": "Aqara account (email or phone)",
+          "password": "Aqara password"
         }
       }
     },

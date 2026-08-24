@@ -11,12 +11,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.aqara_u200.config_flow import AqaraU200ConfigFlow
 from custom_components.aqara_u200.const import (
     CONF_ACCOUNT,
-    CONF_APP_ID,
-    CONF_APP_KEY,
-    CONF_CLIENT_ID,
     CONF_DEVICE_ID,
-    CONF_DISTRICT,
-    CONF_PHONE_ID,
     CONF_REGION,
     DOMAIN,
 )
@@ -28,11 +23,6 @@ USER_INPUT = {
     CONF_REGION: "EU",
     CONF_ACCOUNT: "account@example.com",
     CONF_PASSWORD: "password",
-    CONF_APP_ID: "app-id",
-    CONF_APP_KEY: "app-key",
-    CONF_CLIENT_ID: "client-id",
-    CONF_PHONE_ID: "phone-id",
-    CONF_DISTRICT: "ES",
 }
 
 

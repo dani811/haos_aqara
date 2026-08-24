@@ -11,12 +11,7 @@ from custom_components.aqara_u200 import async_setup_entry, async_unload_entry
 from custom_components.aqara_u200.client import AqaraU200BleClientAdapter
 from custom_components.aqara_u200.const import (
     CONF_ACCOUNT,
-    CONF_APP_ID,
-    CONF_APP_KEY,
-    CONF_CLIENT_ID,
     CONF_DEVICE_ID,
-    CONF_DISTRICT,
-    CONF_PHONE_ID,
     CONF_REGION,
     DOMAIN,
 )
@@ -28,11 +23,6 @@ ADDRESS = "AA:BB:CC:DD:EE:FF"
 AUTH_DATA = {
     CONF_ACCOUNT: "account@example.com",
     CONF_PASSWORD: "password",
-    CONF_APP_ID: "app-id",
-    CONF_APP_KEY: "app-key",
-    CONF_CLIENT_ID: "client-id",
-    CONF_PHONE_ID: "phone-id",
-    CONF_DISTRICT: "ES",
 }
 
 

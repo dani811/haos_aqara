@@ -27,13 +27,7 @@ from homeassistant.core import HomeAssistant
 from .bluetooth import AqaraU200BluetoothManager
 from .const import (
     CONF_ACCOUNT,
-    CONF_APP_ID,
-    CONF_APP_KEY,
-    CONF_CLIENT_ID,
-    CONF_DISTRICT,
-    CONF_PHONE_ID,
     CONF_REGION,
-    DEFAULT_DISTRICT,
     DEFAULT_REGION,
 )
 from .exceptions import (
@@ -49,10 +43,6 @@ _DISCONNECT_TIMEOUT = 10
 AUTH_CONFIG_KEYS = (
     CONF_ACCOUNT,
     CONF_PASSWORD,
-    CONF_APP_ID,
-    CONF_APP_KEY,
-    CONF_CLIENT_ID,
-    CONF_PHONE_ID,
 )
 
 
@@ -78,16 +68,15 @@ class AqaraU200Client(Protocol):
 
 
 def build_cloud_auth(config: Mapping[str, Any]) -> CloudAuthManager:
-    """Build library-owned cloud auth from Home Assistant config-entry data."""
+    """Build library-owned cloud auth from Home Assistant config-entry data.
+
+    Only account + password are needed: aqara-ble bakes the app-global
+    appid/appkey and generates the per-install phone_id/client_id.
+    """
     return CloudAuthManager(
         account=config[CONF_ACCOUNT],
         password=config[CONF_PASSWORD],
-        appid=config[CONF_APP_ID],
-        appkey=config[CONF_APP_KEY],
-        client_id=config[CONF_CLIENT_ID],
-        phone_id=config[CONF_PHONE_ID],
         region=config.get(CONF_REGION, DEFAULT_REGION),
-        district=config.get(CONF_DISTRICT, DEFAULT_DISTRICT),
     )
 
 
