@@ -12,9 +12,10 @@ CONF_REGION = "region"
 # including external changes (Matter/key/keypad). Costs extra lock battery.
 CONF_REALTIME_STATE = "realtime_state"
 DEFAULT_REALTIME_STATE = False
-#: Real-time mode: listen this long per BLE window, then reconnect. Bounded so
-#: an actuation never waits more than one window for the shared connection.
-REALTIME_WINDOW_SECONDS = 25.0
+#: Real-time mode: hold ONE low-power session open this long, then reconnect
+#: (an actuation preempts it instantly, so it is not a latency bound). Short gap
+#: between reconnects to yield the connection.
+REALTIME_SESSION_SECONDS = 3600.0
 REALTIME_GAP_SECONDS = 2.0
 
 DEFAULT_REGION = "EU"

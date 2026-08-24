@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from functools import partial
 from typing import Any, Protocol
 
@@ -73,6 +73,12 @@ class AqaraU200Client(Protocol):
 
     async def async_read_state(self, listen_after: float) -> bool | None:
         """Read the real bolt position over BLE without actuating."""
+        ...
+
+    async def async_listen_realtime(
+        self, on_state: Callable[[bool], None], seconds: float
+    ) -> None:
+        """Hold a low-power session open, streaming real-time state changes."""
         ...
 
 
@@ -158,6 +164,57 @@ class AqaraU200BleClientAdapter:
         observed position, or None if nothing was pushed in the window.
         """
         return await self._async_operate("listen", listen_after=listen_after)
+
+    async def async_listen_realtime(
+        self, on_state: Callable[[bool], None], seconds: float
+    ) -> None:
+        """Hold ONE low-power session open, streaming real ff62 state changes.
+
+        Connects once, requests low-power connection parameters, and keeps the
+        session open up to ``seconds`` — firing ``on_state(locked)`` in real time
+        for every ff62 report (any source: Matter/key/keypad). Returns when the
+        window ends or the connection drops; raises on auth/BLE errors. Cancel the
+        awaiting task to release the connection (e.g. to run an actuation).
+        """
+        ble_device = self._bluetooth_manager.async_get_ble_device()
+        if ble_device is None:
+            raise AqaraU200BluetoothUnavailableError(
+                "Aqara U200 is not reachable through Home Assistant Bluetooth"
+            )
+        bleak_client: BleakClientWithServiceCache | None = None
+        try:
+            bleak_client = await establish_connection(
+                BleakClientWithServiceCache,
+                ble_device,
+                _CONNECTION_NAME,
+                ble_device_callback=lambda: (
+                    self._bluetooth_manager.async_get_ble_device() or ble_device
+                ),
+            )
+            protocol_client = ProtocolU200Client.from_gatt(
+                auth=self._auth,
+                gatt_client=bleak_client,
+                device_id=self._device_id,
+                region=self._region,
+            )
+            await protocol_client.listen(seconds, on_state=on_state, low_power=True)
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:
+            if is_invalid_auth_error(err) or (
+                isinstance(err, U200ClientError) and err.phase is FlowPhase.LOGIN
+            ):
+                raise AqaraU200AuthenticationError(
+                    "Aqara rejected the configured credentials"
+                ) from err
+            raise AqaraU200OperationError("Aqara U200 real-time listen failed") from err
+        finally:
+            if bleak_client is not None:
+                try:
+                    async with asyncio.timeout(_DISCONNECT_TIMEOUT):
+                        await bleak_client.disconnect()
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
 
     async def _async_operate(
         self, operation: str, *, listen_after: float = _STATE_LISTEN_SECONDS

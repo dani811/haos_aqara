@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .bluetooth import AqaraU200BluetoothManager, AqaraU200BluetoothState
 from .client import AqaraU200Client
-from .const import DOMAIN, REALTIME_GAP_SECONDS, REALTIME_WINDOW_SECONDS
+from .const import DOMAIN, REALTIME_GAP_SECONDS, REALTIME_SESSION_SECONDS
 from .exceptions import (
     AqaraU200AuthenticationError,
     AqaraU200BluetoothUnavailableError,
@@ -66,6 +66,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         self._last_error_type: str | None = None
         self._is_locked: bool | None = None
         self._realtime_task: asyncio.Task[None] | None = None
+        self._listen_handle: asyncio.Task[None] | None = None
         self._realtime_stop = asyncio.Event()
         self.data = self._build_snapshot(bluetooth_manager.state)
 
@@ -82,36 +83,56 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
     async def async_stop_realtime(self) -> None:
         """Stop the real-time listener (on unload or when the option is off)."""
         self._realtime_stop.set()
+        self._preempt_listen()
         task, self._realtime_task = self._realtime_task, None
         if task is not None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
-    async def _async_realtime_loop(self) -> None:
-        """Keep reading the real ff62 state in bounded windows until stopped.
+    @callback
+    def _on_realtime_state(self, locked: bool) -> None:
+        """Push a real bolt-position change (from the held ff62 session)."""
+        if locked != self._is_locked:
+            self._is_locked = locked
+            self.async_set_updated_data(
+                self._build_snapshot(self.bluetooth_manager.state)
+            )
 
-        Serialised with actuations through ``_operation_lock`` so the single BLE
-        connection is never contended; an actuation waits at most one window.
+    def _preempt_listen(self) -> None:
+        """Cancel the held listen so an actuation can take the BLE connection."""
+        handle = self._listen_handle
+        if handle is not None and not handle.done():
+            handle.cancel()
+
+    async def _async_realtime_loop(self) -> None:
+        """Hold ONE low-power session open, streaming ff62 state, until stopped.
+
+        Shares ``_operation_lock`` with actuations: an actuation preempts the held
+        listen (``_preempt_listen``) so it releases the connection instantly, then
+        the loop reconnects. No polling, no per-window reconnects.
         """
         while not self._realtime_stop.is_set():
             if not self.bluetooth_manager.state.reachable:
-                await asyncio.sleep(REALTIME_WINDOW_SECONDS)
+                await asyncio.sleep(REALTIME_GAP_SECONDS)
                 continue
             try:
                 async with self._operation_lock:
-                    observed = await self.client.async_read_state(
-                        REALTIME_WINDOW_SECONDS
+                    self._listen_handle = asyncio.ensure_future(
+                        self.client.async_listen_realtime(
+                            self._on_realtime_state, REALTIME_SESSION_SECONDS
+                        )
                     )
-                if observed is not None and observed != self._is_locked:
-                    self._is_locked = observed
-                    self.async_set_updated_data(
-                        self._build_snapshot(self.bluetooth_manager.state)
-                    )
+                    try:
+                        await self._listen_handle
+                    finally:
+                        self._listen_handle = None
             except asyncio.CancelledError:
-                raise
+                if self._realtime_stop.is_set():
+                    raise
+                # Preempted by an actuation; reconnect once it releases the lock.
             except Exception as err:  # noqa: BLE001 - transient BLE/cloud errors
-                _LOGGER.debug("real-time state read failed (%s)", type(err).__name__)
+                _LOGGER.debug("real-time listen ended (%s)", type(err).__name__)
             await asyncio.sleep(REALTIME_GAP_SECONDS)
 
     @callback
@@ -138,6 +159,9 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         action: Callable[[], Awaitable[bool | None]],
     ) -> None:
         """Run one HA operation at a time for this config entry."""
+        # If a real-time listen holds the connection, preempt it so this actuation
+        # takes the BLE connection without waiting.
+        self._preempt_listen()
         async with self._operation_lock:
             state = self.bluetooth_manager.state
             if not state.reachable:
