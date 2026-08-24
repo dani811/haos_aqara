@@ -15,7 +15,11 @@ from .const import CONF_DEVICE_ID, CONF_REGION, DEFAULT_REGION, DOMAIN
 from .coordinator import AqaraU200Coordinator
 from .frontend import async_register_frontend
 
-PLATFORMS: tuple[Platform, ...] = (Platform.LOCK,)
+PLATFORMS: tuple[Platform, ...] = (
+    Platform.LOCK,
+    Platform.BINARY_SENSOR,
+    Platform.SENSOR,
+)
 
 # This integration is configured through the UI (config entries) only; it takes
 # no YAML configuration under its domain.

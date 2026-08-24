@@ -41,5 +41,13 @@
       "discovery_info_missing": "Bluetooth discovery information is no longer available.",
       "reauth_successful": "Aqara credentials were updated successfully."
     }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connectivity": { "name": "Connectivity" }
+    },
+    "sensor": {
+      "rssi": { "name": "Signal strength" }
+    }
   }
 }

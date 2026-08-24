@@ -41,5 +41,13 @@
       "discovery_info_missing": "La información de descubrimiento Bluetooth ya no está disponible.",
       "reauth_successful": "Las credenciales de Aqara se han actualizado correctamente."
     }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connectivity": { "name": "Conectividad" }
+    },
+    "sensor": {
+      "rssi": { "name": "Intensidad de señal" }
+    }
   }
 }
