@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from collections.abc import Mapping
+from functools import partial
 from typing import Any, Protocol
 
 from aqara_ble import (
@@ -98,6 +99,18 @@ async def async_validate_cloud_auth(
     """Validate credentials without blocking Home Assistant's event loop."""
     auth = build_cloud_auth(config)
     await hass.async_add_executor_job(auth.build_signer)
+
+
+async def async_resolve_device_id(
+    hass: HomeAssistant, config: Mapping[str, Any], *, mac: str | None = None
+) -> str:
+    """Resolve the lock's device id from the account (off the event loop).
+
+    Lets the config flow avoid asking the user for a device id: it lists the
+    account's devices and, when there is more than one, matches ``mac``.
+    """
+    auth = build_cloud_auth(config)
+    return await hass.async_add_executor_job(partial(auth.resolve_device_id, mac=mac))
 
 
 class AqaraU200BleClientAdapter:

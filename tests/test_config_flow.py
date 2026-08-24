@@ -17,30 +17,37 @@ from custom_components.aqara_u200.const import (
 )
 
 ADDRESS = "AA:BB:CC:DD:EE:FF"
+RESOLVED_DEVICE_ID = "matt.resolved0000"
 USER_INPUT = {
     CONF_ADDRESS: ADDRESS,
-    CONF_DEVICE_ID: "device-1234",
     CONF_REGION: "EU",
     CONF_ACCOUNT: "account@example.com",
     CONF_PASSWORD: "password",
 }
 
 
-async def test_user_flow_validates_and_stores_explicit_credentials(hass) -> None:
-    """Production auth data comes from the config entry, never environment vars."""
+async def test_user_flow_validates_and_auto_resolves_device_id(hass) -> None:
+    """The user supplies only account + password; the device id is resolved."""
     flow = AqaraU200ConfigFlow()
     flow.hass = hass
     flow.context = {"source": SOURCE_USER}
 
-    with patch(
-        "custom_components.aqara_u200.config_flow.async_validate_cloud_auth",
-        new=AsyncMock(),
-    ) as validate:
+    with (
+        patch(
+            "custom_components.aqara_u200.config_flow.async_validate_cloud_auth",
+            new=AsyncMock(),
+        ) as validate,
+        patch(
+            "custom_components.aqara_u200.config_flow.async_resolve_device_id",
+            new=AsyncMock(return_value=RESOLVED_DEVICE_ID),
+        ) as resolve,
+    ):
         result = await flow.async_step_user(dict(USER_INPUT))
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == USER_INPUT
-    validate.assert_awaited_once_with(hass, USER_INPUT)
+    assert result["data"] == {**USER_INPUT, CONF_DEVICE_ID: RESOLVED_DEVICE_ID}
+    validate.assert_awaited_once()
+    resolve.assert_awaited_once()
 
 
 async def test_user_flow_maps_invalid_auth_without_raw_details(hass) -> None:

@@ -16,7 +16,12 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
-from .client import AUTH_CONFIG_KEYS, async_validate_cloud_auth, is_invalid_auth_error
+from .client import (
+    AUTH_CONFIG_KEYS,
+    async_resolve_device_id,
+    async_validate_cloud_auth,
+    is_invalid_auth_error,
+)
 from .const import (
     CONF_ACCOUNT,
     CONF_DEVICE_ID,
@@ -68,6 +73,16 @@ async def _async_auth_error(hass: HomeAssistant, data: Mapping[str, Any]) -> str
     return None
 
 
+async def _async_resolve_device_id(
+    hass: HomeAssistant, data: Mapping[str, Any], mac: str
+) -> tuple[str | None, str | None]:
+    """Resolve the lock's device id from the account; return (device_id, error)."""
+    try:
+        return await async_resolve_device_id(hass, data, mac=mac), None
+    except Exception:  # noqa: BLE001 - no lock found / ambiguous / transient
+        return None, "no_device"
+
+
 class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle Aqara U200 configuration."""
 
@@ -102,20 +117,20 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             data = _entry_data(user_input)
-            data.update(
-                {
-                    CONF_ADDRESS: self._discovered_address,
-                    CONF_DEVICE_ID: data[CONF_DEVICE_ID],
-                    CONF_REGION: data[CONF_REGION],
-                }
-            )
-            if error := await _async_auth_error(self.hass, data):
+            data[CONF_ADDRESS] = self._discovered_address
+            error = await _async_auth_error(self.hass, data)
+            if not error:
+                device_id, error = await _async_resolve_device_id(
+                    self.hass, data, self._discovered_address
+                )
+            if error:
                 return self.async_show_form(
                     step_id="confirm",
                     data_schema=self._confirm_schema(),
                     errors={"base": error},
                     description_placeholders={"name": self._discovered_name},
                 )
+            data[CONF_DEVICE_ID] = device_id
             return self.async_create_entry(
                 title=self._discovered_name,
                 data=data,
@@ -137,12 +152,18 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
             address = data[CONF_ADDRESS]
             await self.async_set_unique_id(address)
             self._abort_if_unique_id_configured()
-            if error := await _async_auth_error(self.hass, data):
+            error = await _async_auth_error(self.hass, data)
+            if not error:
+                device_id, error = await _async_resolve_device_id(
+                    self.hass, data, address
+                )
+            if error:
                 return self.async_show_form(
                     step_id="user",
                     data_schema=self._user_schema(),
                     errors={"base": error},
                 )
+            data[CONF_DEVICE_ID] = device_id
             return self.async_create_entry(
                 title=f"Aqara U200 {address}",
                 data=data,
@@ -191,10 +212,9 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     def _confirm_schema() -> vol.Schema:
-        """Return Bluetooth-discovery confirmation fields."""
+        """Return Bluetooth-discovery confirmation fields (account + password)."""
         return vol.Schema(
             {
-                vol.Required(CONF_DEVICE_ID): _NON_EMPTY_TEXT,
                 vol.Required(CONF_REGION, default=DEFAULT_REGION): vol.In(
                     SUPPORTED_REGIONS
                 ),
@@ -204,11 +224,10 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     def _user_schema() -> vol.Schema:
-        """Return manual setup fields."""
+        """Return manual setup fields (address + account + password)."""
         return vol.Schema(
             {
                 vol.Required(CONF_ADDRESS): _NON_EMPTY_TEXT,
-                vol.Required(CONF_DEVICE_ID): _NON_EMPTY_TEXT,
                 vol.Required(CONF_REGION, default=DEFAULT_REGION): vol.In(
                     SUPPORTED_REGIONS
                 ),

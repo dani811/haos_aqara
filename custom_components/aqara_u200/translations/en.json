@@ -33,7 +33,8 @@
     },
     "error": {
       "invalid_auth": "Aqara rejected these credentials.",
-      "cannot_connect": "Could not validate the credentials with Aqara Cloud."
+      "cannot_connect": "Could not validate the credentials with Aqara Cloud.",
+      "no_device": "No Aqara lock could be found on this account for this device."
     },
     "abort": {
       "already_configured": "This lock is already configured.",

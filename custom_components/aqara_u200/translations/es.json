@@ -33,7 +33,8 @@
     },
     "error": {
       "invalid_auth": "Aqara ha rechazado estas credenciales.",
-      "cannot_connect": "No se pudieron validar las credenciales con Aqara Cloud."
+      "cannot_connect": "No se pudieron validar las credenciales con Aqara Cloud.",
+      "no_device": "No se encontró ninguna cerradura Aqara en esta cuenta para este dispositivo."
     },
     "abort": {
       "already_configured": "Esta cerradura ya está configurada.",
