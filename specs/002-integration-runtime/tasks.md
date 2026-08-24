@@ -32,14 +32,14 @@ Tests are gates: a behavior-changing task is not complete until its unit tests p
 
 ## Phase 4 - Real protocol adapter
 
-- [x] T018 Use the async-safe `aqara-u200-ble` v0.5.0 release/tag.
-- [x] T019 Pin `aqara-u200-ble==0.5.0` in `manifest.json`.
+- [x] T018 Use the async-safe `aqara-ble` v0.5.0 release/tag.
+- [x] T019 Pin `aqara-ble==0.5.0` in `manifest.json`.
 - [x] T020 Implement `AqaraU200BleClientAdapter`; BLE remains on HA event loop, only library-owned blocking cloud calls are offloaded by the library.
 - [x] T021 Map library concurrency/cloud/auth/BLE errors without leaking secrets.
 - [x] T022 Enable confirmed lock/unlock only, without optimistic state.
 - [ ] T023 Validate against physical U200 over Bluetooth Proxy.
 - [x] T024 Add explicit config-flow credential collection and reauth; do not use production environment variables.
-- [ ] T025 Publish the `aqara-u200-ble==0.5.0` distribution to the Python package index so Home Assistant can install the manifest requirement.
+- [ ] T025 Publish the `aqara-ble==0.5.0` distribution to the Python package index so Home Assistant can install the manifest requirement.
 
 ## Not To Do
 

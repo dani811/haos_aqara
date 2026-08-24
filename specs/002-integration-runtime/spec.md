@@ -3,7 +3,7 @@
 **Feature Branch**: `feature/002-integration-runtime`  
 **Status**: Implementation complete; distribution and hardware validation pending
 **Depends on**: `feature/001-ha-integration-scaffold`  
-**External blocker**: tag `v0.5.0` is released, but the `aqara-u200-ble==0.5.0` distribution must be published to the Python package index before Home Assistant can install the manifest requirement.
+**External blocker**: tag `v0.5.0` is released, but the `aqara-ble==0.5.0` distribution must be published to the Python package index before Home Assistant can install the manifest requirement.
 
 ## Goal
 
@@ -45,7 +45,7 @@ Diagnostics expose reachability and non-sensitive runtime state without account 
 
 The following are intentionally NOT part of this feature:
 
-- Pinning or importing an unreleased/in-progress `aqara-u200-ble` revision.
+- Pinning or importing an unreleased/in-progress `aqara-ble` revision.
 - Executing hardware validation as part of automated tests.
 - Moving BLE client work into executor threads.
 - Reading production credentials from environment variables or `.env` files.

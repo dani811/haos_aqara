@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, patch
 
-from aqara_u200_ble import CloudServiceError
+from aqara_ble import CloudServiceError
 from homeassistant.config_entries import SOURCE_REAUTH, SOURCE_USER
 from homeassistant.const import CONF_ADDRESS, CONF_PASSWORD
 from homeassistant.data_entry_flow import FlowResultType

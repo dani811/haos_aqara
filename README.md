@@ -1,6 +1,6 @@
 # haos_aqara
 
-Home Assistant custom integration for autonomous Aqara U200 management over Bluetooth, backed by the `aqara-u200-ble` protocol library.
+Home Assistant custom integration for autonomous Aqara U200 management over Bluetooth, backed by the `aqara-ble` protocol library.
 
 ## Goals
 
@@ -24,7 +24,7 @@ custom_components/aqara_u200
      |
      +--> Home Assistant Bluetooth API / Bluetooth Proxy
      |
-     +--> aqara-u200-ble
+     +--> aqara-ble
               |
               +--> BLE auth + AES-CCM control channel
               +--> Aqara cloud login/KDF/session verification
@@ -63,4 +63,4 @@ tests/
 
 ## Status
 
-The integration runtime uses Home Assistant Bluetooth routing, a fresh `bleak-retry-connector` connection per action, and `aqara-u200-ble` 0.5.0 through `U200Client.from_gatt()`. Only confirmed lock/unlock operations are exposed; lock state is not optimistic. Installation remains blocked until the `aqara-u200-ble==0.5.0` distribution is published to the Python package index, and physical Bluetooth Proxy validation is still required.
+The integration runtime uses Home Assistant Bluetooth routing, a fresh `bleak-retry-connector` connection per action, and `aqara-ble` 0.5.0 through `U200Client.from_gatt()`. Only confirmed lock/unlock operations are exposed; lock state is not optimistic. Installation remains blocked until the `aqara-ble==0.5.0` distribution is published to the Python package index, and physical Bluetooth Proxy validation is still required.

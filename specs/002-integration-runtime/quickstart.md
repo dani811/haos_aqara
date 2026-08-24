@@ -47,4 +47,4 @@ Expected: diagnostics contain only sanitized runtime metadata. Full `device_id`,
 
 ## Distribution and hardware validation
 
-Before installation validation, publish `aqara-u200-ble==0.5.0` to the Python package index; the Git tag alone is not installable from a Home Assistant manifest. Physical lock/unlock validation through Bluetooth Proxy remains a controlled manual gate and is not run by automated tests.
+Before installation validation, publish `aqara-ble==0.5.0` to the Python package index; the Git tag alone is not installable from a Home Assistant manifest. Physical lock/unlock validation through Bluetooth Proxy remains a controlled manual gate and is not run by automated tests.

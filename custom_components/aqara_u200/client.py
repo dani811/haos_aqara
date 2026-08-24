@@ -5,14 +5,14 @@ import logging
 from collections.abc import Mapping
 from typing import Any, Protocol
 
-from aqara_u200_ble import (
+from aqara_ble import (
     CloudAuthManager,
     CloudServiceError,
     FlowPhase,
     OperationInProgressError,
     U200ClientError,
 )
-from aqara_u200_ble import (
+from aqara_ble import (
     U200Client as ProtocolU200Client,
 )
 from bleak.exc import BleakError
@@ -60,7 +60,7 @@ class AqaraU200Client(Protocol):
     """Contract consumed by the Home Assistant runtime.
 
     Real protocol/session/KDF details stay behind an adapter implementing this
-    contract. Entities must never depend directly on aqara-u200-ble internals.
+    contract. Entities must never depend directly on aqara-ble internals.
     """
 
     @property
@@ -112,7 +112,7 @@ async def async_validate_cloud_auth(
 
 
 class AqaraU200BleClientAdapter:
-    """Adapt HA-managed Bluetooth connections to ``aqara-u200-ble``."""
+    """Adapt HA-managed Bluetooth connections to ``aqara-ble``."""
 
     def __init__(
         self,

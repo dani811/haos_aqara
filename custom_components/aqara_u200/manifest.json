@@ -8,7 +8,7 @@
   "codeowners": ["@dani811"],
   "integration_type": "device",
   "dependencies": ["bluetooth_adapters", "frontend", "http"],
-  "requirements": ["aqara-u200-ble==0.5.0"],
+  "requirements": ["aqara-ble==1.0.0"],
   "bluetooth": [
     {
       "service_uuid": "0000fcb9-0000-1000-8000-00805f9b34fb",

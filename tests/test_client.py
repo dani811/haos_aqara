@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from aqara_u200_ble import CloudServiceError
+from aqara_ble import CloudServiceError
 from bleak_retry_connector import BleakConnectionError
 
 from custom_components.aqara_u200.client import AqaraU200BleClientAdapter

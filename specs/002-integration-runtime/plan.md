@@ -8,7 +8,7 @@
 - Bluetooth discovery/unavailability callbacks drive runtime state; no integration-owned scanner and no active polling are required in this slice.
 - `DataUpdateCoordinator` is used as a push coordinator; updates are emitted with `async_set_updated_data`.
 - A native `LockEntity` consumes only the integration runtime/client abstraction.
-- The adapter targets the exact released `aqara-u200-ble` 0.5.0 API. Installation remains externally blocked until that distribution is available from the Python package index.
+- The adapter targets the exact released `aqara-ble` 0.5.0 API. Installation remains externally blocked until that distribution is available from the Python package index.
 
 ## Architecture
 
@@ -54,7 +54,7 @@ ConfigEntry
 - Integration tests pass.
 
 ### Phase 4 - Real adapter
-- Pin `aqara-u200-ble==0.5.0` in the integration manifest.
+- Pin `aqara-ble==0.5.0` in the integration manifest.
 - Resolve the connectable BLEDevice through Home Assistant and establish a fresh connection with `bleak-retry-connector`.
 - Wrap the connected GATT client with `U200Client.from_gatt()` and inject a config-entry-owned `CloudAuthManager`.
 - Map failures to sanitized integration exceptions and start reauth on code 810.
