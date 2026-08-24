@@ -34,6 +34,8 @@ class AqaraU200RuntimeSnapshot:
     operation_in_progress: bool
     last_operation: str | None
     last_error_type: str | None
+    #: Optimistic bolt position after the last confirmed actuation (None = unknown).
+    is_locked: bool | None = None
 
 
 class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
@@ -61,6 +63,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         self._operation_in_progress = False
         self._last_operation: str | None = None
         self._last_error_type: str | None = None
+        self._is_locked: bool | None = None
         self.data = self._build_snapshot(bluetooth_manager.state)
 
     @callback
@@ -101,6 +104,9 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
 
             try:
                 await action()
+                # Optimistic: the actuation was confirmed (no error), so reflect
+                # the commanded bolt position until a real state read lands.
+                self._is_locked = operation == "lock"
             except AqaraU200AuthenticationError as err:
                 self._last_error_type = type(err).__name__
                 self._entry.async_start_reauth(self.hass)
@@ -131,4 +137,5 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             operation_in_progress=self._operation_in_progress,
             last_operation=self._last_operation,
             last_error_type=self._last_error_type,
+            is_locked=self._is_locked,
         )

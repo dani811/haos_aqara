@@ -60,12 +60,13 @@ class AqaraU200Lock(CoordinatorEntity[AqaraU200Coordinator], LockEntity):
 
     @property
     def is_locked(self) -> bool | None:
-        """Return lock state.
+        """Return the lock state (optimistic until a real state read lands).
 
-        Protocol-backed state reads are deliberately deferred; do not invent an
-        optimistic state before the U200 state-read path is confirmed.
+        The U200 does not push its bolt position on this path yet, so the state
+        reflects the last confirmed actuation (lock/unlock) and is ``None``
+        (unknown) until the first one after setup.
         """
-        return None
+        return self.coordinator.data.is_locked
 
     async def async_lock(self, **kwargs: Any) -> None:
         """Lock the U200 through the runtime boundary."""
