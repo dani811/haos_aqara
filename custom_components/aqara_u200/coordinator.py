@@ -13,7 +13,13 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .bluetooth import AqaraU200BluetoothManager, AqaraU200BluetoothState
 from .client import AqaraU200Client
-from .const import DOMAIN, REALTIME_GAP_SECONDS, REALTIME_SESSION_SECONDS
+from .const import (
+    BATTERY_INITIAL_DELAY_SECONDS,
+    BATTERY_POLL_SECONDS,
+    DOMAIN,
+    REALTIME_GAP_SECONDS,
+    REALTIME_SESSION_SECONDS,
+)
 from .exceptions import (
     AqaraU200AuthenticationError,
     AqaraU200BluetoothUnavailableError,
@@ -37,6 +43,8 @@ class AqaraU200RuntimeSnapshot:
     last_error_type: str | None
     #: Optimistic bolt position after the last confirmed actuation (None = unknown).
     is_locked: bool | None = None
+    #: Battery charge percentage read over BLE (None until the first read).
+    battery_percent: int | None = None
 
 
 class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
@@ -65,9 +73,12 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         self._last_operation: str | None = None
         self._last_error_type: str | None = None
         self._is_locked: bool | None = None
+        self._battery_percent: int | None = None
         self._realtime_task: asyncio.Task[None] | None = None
         self._listen_handle: asyncio.Task[None] | None = None
         self._realtime_stop = asyncio.Event()
+        self._battery_task: asyncio.Task[None] | None = None
+        self._battery_stop = asyncio.Event()
         self.data = self._build_snapshot(bluetooth_manager.state)
 
     @callback
@@ -134,6 +145,102 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             except Exception as err:  # noqa: BLE001 - transient BLE/cloud errors
                 _LOGGER.debug("real-time listen ended (%s)", type(err).__name__)
             await asyncio.sleep(REALTIME_GAP_SECONDS)
+
+    @callback
+    def async_start_battery(self) -> None:
+        """Start the periodic BLE battery poll (once after startup, then hourly-ish)."""
+        if self._battery_task is not None:
+            return
+        self._battery_stop.clear()
+        self._battery_task = self.config_entry.async_create_background_task(
+            self.hass, self._async_battery_loop(), f"{DOMAIN}_battery"
+        )
+
+    async def async_stop_battery(self) -> None:
+        """Stop the battery poll (on unload)."""
+        self._battery_stop.set()
+        task, self._battery_task = self._battery_task, None
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    async def _async_battery_loop(self) -> None:
+        """Read the battery over BLE on a slow cadence, sharing the operation lock.
+
+        Sleeps a short delay after startup, then reads every ``BATTERY_POLL_SECONDS``.
+        Each read preempts any held real-time listen and takes ``_operation_lock`` so
+        it never collides with an actuation. Failures keep the last known value.
+        """
+        try:
+            await asyncio.wait_for(
+                self._battery_stop.wait(), timeout=BATTERY_INITIAL_DELAY_SECONDS
+            )
+            return  # stopped during the initial delay
+        except TimeoutError:
+            pass
+        while not self._battery_stop.is_set():
+            # Ground-truth the bolt position too (correct state after a restart,
+            # and a slow backstop for out-of-band changes when real-time is off).
+            await self._async_refresh_state()
+            await self._async_refresh_battery()
+            try:
+                await asyncio.wait_for(
+                    self._battery_stop.wait(), timeout=BATTERY_POLL_SECONDS
+                )
+                return
+            except TimeoutError:
+                continue
+
+    async def _async_refresh_state(self) -> None:
+        """Read the real bolt position once (guarded), updating on change.
+
+        Skipped while the real-time listener is active — its ff62 stream already
+        holds the ground truth, so we avoid a redundant reconnect.
+        """
+        if not self.bluetooth_manager.state.reachable or self._realtime_task is not None:
+            return
+        self._preempt_listen()
+        try:
+            async with self._operation_lock:
+                locked = await self.client.async_read_lock_status()
+        except asyncio.CancelledError:
+            raise
+        except AqaraU200AuthenticationError as err:
+            self._last_error_type = type(err).__name__
+            self._entry.async_start_reauth(self.hass)
+            return
+        except Exception as err:  # noqa: BLE001 - transient BLE/cloud errors
+            _LOGGER.debug("lock-status read failed (%s)", type(err).__name__)
+            return
+        if locked is not None and locked != self._is_locked:
+            self._is_locked = locked
+            self.async_set_updated_data(
+                self._build_snapshot(self.bluetooth_manager.state)
+            )
+
+    async def _async_refresh_battery(self) -> None:
+        """Read the battery once (guarded), updating the snapshot on success."""
+        if not self.bluetooth_manager.state.reachable:
+            return
+        self._preempt_listen()
+        try:
+            async with self._operation_lock:
+                percent = await self.client.async_read_battery()
+        except asyncio.CancelledError:
+            raise
+        except AqaraU200AuthenticationError as err:
+            self._last_error_type = type(err).__name__
+            self._entry.async_start_reauth(self.hass)
+            return
+        except Exception as err:  # noqa: BLE001 - transient BLE/cloud errors
+            _LOGGER.debug("battery read failed (%s)", type(err).__name__)
+            return
+        if percent is not None and percent != self._battery_percent:
+            self._battery_percent = percent
+            self.async_set_updated_data(
+                self._build_snapshot(self.bluetooth_manager.state)
+            )
 
     @callback
     def async_handle_bluetooth_state(self, state: AqaraU200BluetoothState) -> None:
@@ -210,4 +317,5 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             last_operation=self._last_operation,
             last_error_type=self._last_error_type,
             is_locked=self._is_locked,
+            battery_percent=self._battery_percent,
         )
