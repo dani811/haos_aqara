@@ -5,7 +5,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import SIGNAL_STRENGTH_DECIBELS_MILLIWATT
+from homeassistant.const import PERCENTAGE, SIGNAL_STRENGTH_DECIBELS_MILLIWATT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
@@ -22,9 +22,44 @@ async def async_setup_entry(
     entry: AqaraU200ConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the Aqara U200 signal-strength sensor."""
+    """Set up the Aqara U200 sensors (battery + BLE signal strength)."""
     del hass
-    async_add_entities([AqaraU200Rssi(entry, entry.runtime_data.coordinator)])
+    coordinator = entry.runtime_data.coordinator
+    async_add_entities(
+        [AqaraU200Battery(entry, coordinator), AqaraU200Rssi(entry, coordinator)]
+    )
+
+
+class AqaraU200Battery(CoordinatorEntity[AqaraU200Coordinator], SensorEntity):
+    """The lock's battery charge, read over BLE (GET_BATTERY_INFO)."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "battery"
+    _attr_device_class = SensorDeviceClass.BATTERY
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        entry: AqaraU200ConfigEntry,
+        coordinator: AqaraU200Coordinator,
+    ) -> None:
+        """Initialize the battery sensor."""
+        super().__init__(coordinator)
+        address = entry.runtime_data.address
+        self._attr_unique_id = f"{address}_battery"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, address)},
+            manufacturer="Aqara",
+            model="U200",
+            name=entry.title,
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the battery percentage (None until the first BLE read)."""
+        return self.coordinator.data.battery_percent
 
 
 class AqaraU200Rssi(CoordinatorEntity[AqaraU200Coordinator], SensorEntity):

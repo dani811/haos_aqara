@@ -92,6 +92,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: AqaraU200ConfigEntry) ->
     entry.async_on_unload(coordinator.async_stop_realtime)
     if entry.options.get(CONF_REALTIME_STATE, DEFAULT_REALTIME_STATE):
         coordinator.async_start_realtime()
+
+    # Periodic BLE battery read (always on; slow cadence).
+    entry.async_on_unload(coordinator.async_stop_battery)
+    coordinator.async_start_battery()
+
     entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
     return True
 

@@ -18,6 +18,12 @@ DEFAULT_REALTIME_STATE = False
 REALTIME_SESSION_SECONDS = 3600.0
 REALTIME_GAP_SECONDS = 2.0
 
+#: Battery is read over BLE (GET_BATTERY_INFO 0xde). A BLE read is costly and the
+#: charge moves slowly, so poll it infrequently: once shortly after startup, then
+#: every few hours.
+BATTERY_POLL_SECONDS = 6 * 3600.0
+BATTERY_INITIAL_DELAY_SECONDS = 30.0
+
 DEFAULT_REGION = "EU"
 SUPPORTED_REGIONS = ("EU", "US", "CN")
 

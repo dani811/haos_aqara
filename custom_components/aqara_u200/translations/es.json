@@ -49,6 +49,7 @@
       "connectivity": { "name": "Conectividad" }
     },
     "sensor": {
+      "battery": { "name": "Batería" },
       "rssi": { "name": "Intensidad de señal" }
     }
   },

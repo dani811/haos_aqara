@@ -81,6 +81,10 @@ class AqaraU200Client(Protocol):
         """Hold a low-power session open, streaming real-time state changes."""
         ...
 
+    async def async_read_battery(self) -> int | None:
+        """Read the battery percentage over BLE; None if unavailable."""
+        ...
+
 
 def build_cloud_auth(config: Mapping[str, Any]) -> CloudAuthManager:
     """Build library-owned cloud auth from Home Assistant config-entry data.
@@ -208,6 +212,55 @@ class AqaraU200BleClientAdapter:
                     "Aqara rejected the configured credentials"
                 ) from err
             raise AqaraU200OperationError("Aqara U200 real-time listen failed") from err
+        finally:
+            if bleak_client is not None:
+                try:
+                    async with asyncio.timeout(_DISCONNECT_TIMEOUT):
+                        await bleak_client.disconnect()
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
+
+    async def async_read_battery(self) -> int | None:
+        """Read the battery percentage over BLE (GET_BATTERY_INFO, 0xde).
+
+        Opens one session, sends the confirmed read frame, and returns the decoded
+        percentage (or None if the lock does not answer). Auth failures propagate
+        so the coordinator can trigger reauth; other failures raise
+        ``AqaraU200*Error`` so the caller can log and keep the last value.
+        """
+        ble_device = self._bluetooth_manager.async_get_ble_device()
+        if ble_device is None:
+            raise AqaraU200BluetoothUnavailableError(
+                "Aqara U200 is not reachable through Home Assistant Bluetooth"
+            )
+        bleak_client: BleakClientWithServiceCache | None = None
+        try:
+            bleak_client = await establish_connection(
+                BleakClientWithServiceCache,
+                ble_device,
+                _CONNECTION_NAME,
+                ble_device_callback=lambda: (
+                    self._bluetooth_manager.async_get_ble_device() or ble_device
+                ),
+            )
+            protocol_client = ProtocolU200Client.from_gatt(
+                auth=self._auth,
+                gatt_client=bleak_client,
+                device_id=self._device_id,
+                region=self._region,
+            )
+            state = await protocol_client.battery()
+            return state.battery_percent
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:
+            if is_invalid_auth_error(err) or (
+                isinstance(err, U200ClientError) and err.phase is FlowPhase.LOGIN
+            ):
+                raise AqaraU200AuthenticationError(
+                    "Aqara rejected the configured credentials"
+                ) from err
+            raise AqaraU200OperationError("Aqara U200 battery read failed") from err
         finally:
             if bleak_client is not None:
                 try:
