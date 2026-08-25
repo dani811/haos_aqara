@@ -23,6 +23,13 @@ REALTIME_GAP_SECONDS = 2.0
 #: every few hours.
 BATTERY_POLL_SECONDS = 6 * 3600.0
 BATTERY_INITIAL_DELAY_SECONDS = 30.0
+#: Until every value (battery + settings) has been read at least once, retry on
+#: this short interval instead of waiting the full poll period.
+BATTERY_RETRY_SECONDS = 300.0
+#: The U200 rejects an immediate reconnect (~5 s). Space every BLE read in a poll
+#: cycle (state, battery, and each setting) by this much so back-to-back reads
+#: don't fail on the reconnect rejection.
+BLE_READ_GAP_SECONDS = 8.0
 
 DEFAULT_REGION = "EU"
 SUPPORTED_REGIONS = ("EU", "US", "CN")

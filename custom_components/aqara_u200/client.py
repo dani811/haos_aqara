@@ -29,6 +29,7 @@ from homeassistant.core import HomeAssistant
 
 from .bluetooth import AqaraU200BluetoothManager
 from .const import (
+    BLE_READ_GAP_SECONDS,
     CONF_ACCOUNT,
     CONF_REGION,
     DEFAULT_REGION,
@@ -392,7 +393,9 @@ class AqaraU200BleClientAdapter:
         rarely, so the coordinator reads them on the slow battery cadence.
         """
         door_type = await self._async_one_read(lambda c: c.read_door_type())
+        await asyncio.sleep(BLE_READ_GAP_SECONDS)
         assist_turn = await self._async_one_read(lambda c: c.read_assist_turn())
+        await asyncio.sleep(BLE_READ_GAP_SECONDS)
         pull = await self._async_one_read(lambda c: c.read_pull_spring())
         return LockSettings(
             door_type=door_type,
