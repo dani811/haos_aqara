@@ -46,11 +46,18 @@
   },
   "entity": {
     "binary_sensor": {
-      "connectivity": { "name": "Connectivity" }
+      "connectivity": { "name": "Connectivity" },
+      "assist_turn": { "name": "Turn assist" },
+      "pull_spring": { "name": "Pull-spring function" }
     },
     "sensor": {
       "battery": { "name": "Battery" },
-      "rssi": { "name": "Signal strength" }
+      "rssi": { "name": "Signal strength" },
+      "door_type": {
+        "name": "Door lock type",
+        "state": { "eu": "EU", "uk": "UK", "us": "US" }
+      },
+      "pull_spring_retraction": { "name": "Pull-spring retraction" }
     }
   },
   "options": {

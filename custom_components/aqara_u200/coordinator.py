@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .bluetooth import AqaraU200BluetoothManager, AqaraU200BluetoothState
-from .client import AqaraU200Client
+from .client import AqaraU200Client, LockSettings
 from .const import (
     BATTERY_INITIAL_DELAY_SECONDS,
     BATTERY_POLL_SECONDS,
@@ -45,6 +45,11 @@ class AqaraU200RuntimeSnapshot:
     is_locked: bool | None = None
     #: Battery charge percentage read over BLE (None until the first read).
     battery_percent: int | None = None
+    #: Static feature settings read over BLE (None fields until first read).
+    door_type: str | None = None
+    assist_turn: bool | None = None
+    pull_spring_enabled: bool | None = None
+    pull_spring_retraction_s: int | None = None
 
 
 class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
@@ -74,6 +79,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         self._last_error_type: str | None = None
         self._is_locked: bool | None = None
         self._battery_percent: int | None = None
+        self._settings = LockSettings()
         self._realtime_task: asyncio.Task[None] | None = None
         self._listen_handle: asyncio.Task[None] | None = None
         self._realtime_stop = asyncio.Event()
@@ -184,6 +190,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             # and a slow backstop for out-of-band changes when real-time is off).
             await self._async_refresh_state()
             await self._async_refresh_battery()
+            await self._async_refresh_settings()
             try:
                 await asyncio.wait_for(
                     self._battery_stop.wait(), timeout=BATTERY_POLL_SECONDS
@@ -215,6 +222,44 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             return
         if locked is not None and locked != self._is_locked:
             self._is_locked = locked
+            self.async_set_updated_data(
+                self._build_snapshot(self.bluetooth_manager.state)
+            )
+
+    async def _async_refresh_settings(self) -> None:
+        """Read the static feature settings once (guarded), updating on change."""
+        if not self.bluetooth_manager.state.reachable or self._realtime_task is not None:
+            return
+        self._preempt_listen()
+        try:
+            async with self._operation_lock:
+                settings = await self.client.async_read_settings()
+        except asyncio.CancelledError:
+            raise
+        except AqaraU200AuthenticationError as err:
+            self._last_error_type = type(err).__name__
+            self._entry.async_start_reauth(self.hass)
+            return
+        except Exception as err:  # noqa: BLE001 - transient BLE/cloud errors
+            _LOGGER.debug("settings read failed (%s)", type(err).__name__)
+            return
+        # Sticky merge: a field that didn't answer this time keeps its last value.
+        merged = LockSettings(
+            door_type=settings.door_type
+            if settings.door_type is not None
+            else self._settings.door_type,
+            assist_turn=settings.assist_turn
+            if settings.assist_turn is not None
+            else self._settings.assist_turn,
+            pull_spring_enabled=settings.pull_spring_enabled
+            if settings.pull_spring_enabled is not None
+            else self._settings.pull_spring_enabled,
+            pull_spring_retraction_s=settings.pull_spring_retraction_s
+            if settings.pull_spring_retraction_s is not None
+            else self._settings.pull_spring_retraction_s,
+        )
+        if merged != self._settings:
+            self._settings = merged
             self.async_set_updated_data(
                 self._build_snapshot(self.bluetooth_manager.state)
             )
@@ -318,4 +363,8 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             last_error_type=self._last_error_type,
             is_locked=self._is_locked,
             battery_percent=self._battery_percent,
+            door_type=self._settings.door_type,
+            assist_turn=self._settings.assist_turn,
+            pull_spring_enabled=self._settings.pull_spring_enabled,
+            pull_spring_retraction_s=self._settings.pull_spring_retraction_s,
         )
