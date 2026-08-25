@@ -46,11 +46,18 @@
   },
   "entity": {
     "binary_sensor": {
-      "connectivity": { "name": "Conectividad" }
+      "connectivity": { "name": "Conectividad" },
+      "assist_turn": { "name": "Asistencia de giro" },
+      "pull_spring": { "name": "Resorte de tracción" }
     },
     "sensor": {
       "battery": { "name": "Batería" },
-      "rssi": { "name": "Intensidad de señal" }
+      "rssi": { "name": "Intensidad de señal" },
+      "door_type": {
+        "name": "Tipo de cerradura de puerta",
+        "state": { "eu": "UE", "uk": "Reino Unido", "us": "EE. UU." }
+      },
+      "pull_spring_retraction": { "name": "Retracción del resorte" }
     }
   },
   "options": {

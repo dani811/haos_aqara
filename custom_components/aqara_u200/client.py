@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from functools import partial
 from typing import Any, Protocol
 
@@ -51,6 +52,16 @@ AUTH_CONFIG_KEYS = (
 )
 
 
+@dataclass(frozen=True)
+class LockSettings:
+    """Static feature settings read over BLE (feature 032). None = not read yet."""
+
+    door_type: str | None = None
+    assist_turn: bool | None = None
+    pull_spring_enabled: bool | None = None
+    pull_spring_retraction_s: int | None = None
+
+
 class AqaraU200Client(Protocol):
     """Contract consumed by the Home Assistant runtime.
 
@@ -87,6 +98,10 @@ class AqaraU200Client(Protocol):
 
     async def async_read_lock_status(self) -> bool | None:
         """Read the real bolt position on demand over BLE (True locked / None)."""
+        ...
+
+    async def async_read_settings(self) -> "LockSettings":
+        """Read static feature settings over BLE (door type, assist, pull spring)."""
         ...
 
 
@@ -322,6 +337,69 @@ class AqaraU200BleClientAdapter:
                         await bleak_client.disconnect()
                 except (asyncio.CancelledError, Exception):  # noqa: BLE001
                     pass
+
+    async def _async_one_read(
+        self, reader: Callable[[ProtocolU200Client], Awaitable[Any]]
+    ) -> Any:
+        """Open one BLE session, run ``reader(protocol_client)``, release.
+
+        Best-effort: returns None on connect/read failure; auth failures propagate
+        so the coordinator can trigger reauth.
+        """
+        ble_device = self._bluetooth_manager.async_get_ble_device()
+        if ble_device is None:
+            return None
+        bleak_client: BleakClientWithServiceCache | None = None
+        try:
+            bleak_client = await establish_connection(
+                BleakClientWithServiceCache,
+                ble_device,
+                _CONNECTION_NAME,
+                ble_device_callback=lambda: (
+                    self._bluetooth_manager.async_get_ble_device() or ble_device
+                ),
+            )
+            protocol_client = ProtocolU200Client.from_gatt(
+                auth=self._auth,
+                gatt_client=bleak_client,
+                device_id=self._device_id,
+                region=self._region,
+            )
+            return await reader(protocol_client)
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:  # noqa: BLE001
+            if is_invalid_auth_error(err) or (
+                isinstance(err, U200ClientError) and err.phase is FlowPhase.LOGIN
+            ):
+                raise AqaraU200AuthenticationError(
+                    "Aqara rejected the configured credentials"
+                ) from err
+            _LOGGER.debug("Aqara U200 setting read failed (%s)", type(err).__name__)
+            return None
+        finally:
+            if bleak_client is not None:
+                try:
+                    async with asyncio.timeout(_DISCONNECT_TIMEOUT):
+                        await bleak_client.disconnect()
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
+
+    async def async_read_settings(self) -> LockSettings:
+        """Read the static feature settings over BLE (one session per opcode).
+
+        Each read is independent; a failed one leaves its field None. These change
+        rarely, so the coordinator reads them on the slow battery cadence.
+        """
+        door_type = await self._async_one_read(lambda c: c.read_door_type())
+        assist_turn = await self._async_one_read(lambda c: c.read_assist_turn())
+        pull = await self._async_one_read(lambda c: c.read_pull_spring())
+        return LockSettings(
+            door_type=door_type,
+            assist_turn=assist_turn,
+            pull_spring_enabled=pull[0] if pull else None,
+            pull_spring_retraction_s=pull[1] if pull else None,
+        )
 
     async def _async_operate(
         self, operation: str, *, listen_after: float = _STATE_LISTEN_SECONDS
