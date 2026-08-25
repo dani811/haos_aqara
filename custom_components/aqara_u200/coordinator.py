@@ -180,6 +180,9 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         except TimeoutError:
             pass
         while not self._battery_stop.is_set():
+            # Ground-truth the bolt position too (correct state after a restart,
+            # and a slow backstop for out-of-band changes when real-time is off).
+            await self._async_refresh_state()
             await self._async_refresh_battery()
             try:
                 await asyncio.wait_for(
@@ -188,6 +191,33 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
                 return
             except TimeoutError:
                 continue
+
+    async def _async_refresh_state(self) -> None:
+        """Read the real bolt position once (guarded), updating on change.
+
+        Skipped while the real-time listener is active — its ff62 stream already
+        holds the ground truth, so we avoid a redundant reconnect.
+        """
+        if not self.bluetooth_manager.state.reachable or self._realtime_task is not None:
+            return
+        self._preempt_listen()
+        try:
+            async with self._operation_lock:
+                locked = await self.client.async_read_lock_status()
+        except asyncio.CancelledError:
+            raise
+        except AqaraU200AuthenticationError as err:
+            self._last_error_type = type(err).__name__
+            self._entry.async_start_reauth(self.hass)
+            return
+        except Exception as err:  # noqa: BLE001 - transient BLE/cloud errors
+            _LOGGER.debug("lock-status read failed (%s)", type(err).__name__)
+            return
+        if locked is not None and locked != self._is_locked:
+            self._is_locked = locked
+            self.async_set_updated_data(
+                self._build_snapshot(self.bluetooth_manager.state)
+            )
 
     async def _async_refresh_battery(self) -> None:
         """Read the battery once (guarded), updating the snapshot on success."""
