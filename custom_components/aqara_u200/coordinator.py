@@ -16,6 +16,8 @@ from .client import AqaraU200Client, LockSettings
 from .const import (
     BATTERY_INITIAL_DELAY_SECONDS,
     BATTERY_POLL_SECONDS,
+    BATTERY_RETRY_SECONDS,
+    BLE_READ_GAP_SECONDS,
     DOMAIN,
     REALTIME_GAP_SECONDS,
     REALTIME_SESSION_SECONDS,
@@ -188,13 +190,23 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         while not self._battery_stop.is_set():
             # Ground-truth the bolt position too (correct state after a restart,
             # and a slow backstop for out-of-band changes when real-time is off).
+            # Space each BLE read: the lock rejects immediate reconnects.
             await self._async_refresh_state()
+            await asyncio.sleep(BLE_READ_GAP_SECONDS)
             await self._async_refresh_battery()
+            await asyncio.sleep(BLE_READ_GAP_SECONDS)
             await self._async_refresh_settings()
+            # Retry soon while anything is still unread; settle to the slow poll
+            # once battery + the settings have all landed at least once.
+            have_all = (
+                self._battery_percent is not None
+                and self._settings.door_type is not None
+                and self._settings.assist_turn is not None
+                and self._settings.pull_spring_enabled is not None
+            )
+            interval = BATTERY_POLL_SECONDS if have_all else BATTERY_RETRY_SECONDS
             try:
-                await asyncio.wait_for(
-                    self._battery_stop.wait(), timeout=BATTERY_POLL_SECONDS
-                )
+                await asyncio.wait_for(self._battery_stop.wait(), timeout=interval)
                 return
             except TimeoutError:
                 continue
