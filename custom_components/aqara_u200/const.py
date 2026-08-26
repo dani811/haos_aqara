@@ -38,6 +38,10 @@ BATTERY_RETRY_SECONDS = 300.0
 #: values then refreshes about every 5x this).
 ROTATION_FILL_SECONDS = 45.0
 ROTATION_POLL_SECONDS = 3600.0
+#: Gap between the reads of a single on-demand Refresh. Native BT is fine at ~8s,
+#: but a shared ESP32/ESPHome proxy needs longer to recover between connections,
+#: so space them generously (the button runs in the background).
+REFRESH_GAP_SECONDS = 30.0
 #: The U200 rejects an immediate reconnect (~5 s). Space every BLE read in a poll
 #: cycle (state, battery, and each setting) by this much so back-to-back reads
 #: don't fail on the reconnect rejection.
