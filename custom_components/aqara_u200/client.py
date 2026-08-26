@@ -11,6 +11,7 @@ from aqara_ble import (
     CloudAuthManager,
     CloudServiceError,
     FlowPhase,
+    LockEvent,
     LockOperation,
     OperationInProgressError,
     U200ClientError,
@@ -207,15 +208,17 @@ class AqaraU200BleClientAdapter:
         return await self._async_operate("listen", listen_after=listen_after)
 
     async def async_listen_realtime(
-        self, on_state: Callable[[bool], None], seconds: float
+        self, on_event: Callable[[LockEvent], None], seconds: float
     ) -> None:
-        """Hold ONE low-power session open, streaming real ff62 state changes.
+        """Hold ONE low-power session open, streaming real ff62 events.
 
         Connects once, requests low-power connection parameters, and keeps the
-        session open up to ``seconds`` — firing ``on_state(locked)`` in real time
-        for every ff62 report (any source: Matter/key/keypad). Returns when the
-        window ends or the connection drops; raises on auth/BLE errors. Cancel the
-        awaiting task to release the connection (e.g. to run an actuation).
+        session open up to ``seconds`` — firing ``on_event(LockEvent)`` in real
+        time for every ff62 report (any source: Matter/key/keypad/manual), which
+        carries lock/unlock, source, pushed battery and timestamp. The underlying
+        session sends periodic keepalives so the lock keeps pushing past ~30 s.
+        Returns when the window ends or the connection drops; raises on auth/BLE
+        errors. Cancel the awaiting task to release the connection.
         """
         ble_device = self._bluetooth_manager.async_get_ble_device()
         if ble_device is None:
@@ -238,7 +241,7 @@ class AqaraU200BleClientAdapter:
                 device_id=self._device_id,
                 region=self._region,
             )
-            await protocol_client.listen(seconds, on_state=on_state, low_power=True)
+            await protocol_client.listen(seconds, on_event=on_event, low_power=True)
         except asyncio.CancelledError:
             raise
         except Exception as err:
