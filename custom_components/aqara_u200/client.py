@@ -110,8 +110,16 @@ class AqaraU200Client(Protocol):
         """Read the real bolt position on demand over BLE (True locked / None)."""
         ...
 
-    async def async_read_settings(self) -> "LockSettings":
-        """Read static feature settings over BLE (door type, assist, pull spring)."""
+    async def async_read_door_type(self) -> str | None:
+        """Read the door-lock type over BLE ('eu'/'uk'/'us'); None if unavailable."""
+        ...
+
+    async def async_read_assist_turn(self) -> bool | None:
+        """Read whether turn-assist is enabled over BLE; None if unavailable."""
+        ...
+
+    async def async_read_pull_spring(self) -> tuple[bool, int] | None:
+        """Read the pull-spring setting over BLE → (enabled, retraction_s) or None."""
         ...
 
 
@@ -332,23 +340,17 @@ class AqaraU200BleClientAdapter:
                 except (asyncio.CancelledError, Exception):  # noqa: BLE001
                     pass
 
-    async def async_read_settings(self) -> LockSettings:
-        """Read the static feature settings over BLE (one session per opcode).
+    async def async_read_door_type(self) -> str | None:
+        """Read the door-lock type over BLE ('eu'/'uk'/'us'; None on failure)."""
+        return await self._async_read_retry(lambda c: c.read_door_type())
 
-        Each read is independent; a failed one leaves its field None. These change
-        rarely, so the coordinator reads them on the slow battery cadence.
-        """
-        door_type = await self._async_read_retry(lambda c: c.read_door_type())
-        await asyncio.sleep(BLE_READ_GAP_SECONDS)
-        assist_turn = await self._async_read_retry(lambda c: c.read_assist_turn())
-        await asyncio.sleep(BLE_READ_GAP_SECONDS)
-        pull = await self._async_read_retry(lambda c: c.read_pull_spring())
-        return LockSettings(
-            door_type=door_type,
-            assist_turn=assist_turn,
-            pull_spring_enabled=pull[0] if pull else None,
-            pull_spring_retraction_s=pull[1] if pull else None,
-        )
+    async def async_read_assist_turn(self) -> bool | None:
+        """Read whether turn-assist is enabled over BLE (None on failure)."""
+        return await self._async_read_retry(lambda c: c.read_assist_turn())
+
+    async def async_read_pull_spring(self) -> tuple[bool, int] | None:
+        """Read the pull-spring setting over BLE → (enabled, retraction_s) or None."""
+        return await self._async_read_retry(lambda c: c.read_pull_spring())
 
     async def _async_operate(
         self, operation: str, *, listen_after: float = _STATE_LISTEN_SECONDS
