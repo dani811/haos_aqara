@@ -20,6 +20,7 @@ from .const import (
     DOMAIN,
     REALTIME_GAP_SECONDS,
     REALTIME_SESSION_SECONDS,
+    REFRESH_GAP_SECONDS,
     ROTATION_FILL_SECONDS,
     ROTATION_POLL_SECONDS,
 )
@@ -225,9 +226,13 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         On-demand: rotates through state/battery/settings sequentially so each read
         gets a clean connection (HA's Bluetooth proxy dislikes back-to-back reads).
         """
-        for name in ("state", "battery", "door_type", "assist_turn", "pull_spring"):
+        for index, name in enumerate(
+            ("state", "battery", "door_type", "assist_turn", "pull_spring")
+        ):
             if self._battery_stop.is_set():
                 return
+            if index > 0:
+                await asyncio.sleep(REFRESH_GAP_SECONDS)
             await self._async_do_read(name)
 
     async def _async_do_read(self, name: str) -> None:
