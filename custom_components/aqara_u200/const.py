@@ -12,6 +12,12 @@ CONF_REGION = "region"
 # including external changes (Matter/key/keypad). Costs extra lock battery.
 CONF_REALTIME_STATE = "realtime_state"
 DEFAULT_REALTIME_STATE = False
+#: Background BLE poll interval, in hours. 0 = OFF (on-demand only, via the
+#: Refresh button / real-time listener / operations). Configurable so a
+#: battery-conscious user leaves it off and others can refresh periodically.
+CONF_POLL_HOURS = "poll_hours"
+DEFAULT_POLL_HOURS = 0
+MAX_POLL_HOURS = 168
 #: Real-time mode: hold ONE low-power session open this long, then reconnect
 #: (an actuation preempts it instantly, so it is not a latency bound). Short gap
 #: between reconnects to yield the connection.

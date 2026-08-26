@@ -16,6 +16,9 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_ADDRESS, CONF_PASSWORD
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -30,11 +33,14 @@ from .client import (
 from .const import (
     CONF_ACCOUNT,
     CONF_DEVICE_ID,
+    CONF_POLL_HOURS,
     CONF_REALTIME_STATE,
     CONF_REGION,
+    DEFAULT_POLL_HOURS,
     DEFAULT_REALTIME_STATE,
     DEFAULT_REGION,
     DOMAIN,
+    MAX_POLL_HOURS,
     SUPPORTED_REGIONS,
 )
 
@@ -278,12 +284,23 @@ class AqaraU200OptionsFlow(OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(data=user_input)
 
-        current = self.config_entry.options.get(
-            CONF_REALTIME_STATE, DEFAULT_REALTIME_STATE
-        )
+        options = self.config_entry.options
+        realtime = options.get(CONF_REALTIME_STATE, DEFAULT_REALTIME_STATE)
+        poll_hours = options.get(CONF_POLL_HOURS, DEFAULT_POLL_HOURS)
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
-                {vol.Required(CONF_REALTIME_STATE, default=current): bool}
+                {
+                    vol.Required(CONF_REALTIME_STATE, default=realtime): bool,
+                    vol.Required(CONF_POLL_HOURS, default=poll_hours): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0,
+                            max=MAX_POLL_HOURS,
+                            step=1,
+                            unit_of_measurement="h",
+                            mode=NumberSelectorMode.BOX,
+                        )
+                    ),
+                }
             ),
         )

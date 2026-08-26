@@ -15,6 +15,8 @@ from .bluetooth import AqaraU200BluetoothManager, AqaraU200BluetoothState
 from .client import AqaraU200Client, LockSettings
 from .const import (
     BATTERY_INITIAL_DELAY_SECONDS,
+    CONF_POLL_HOURS,
+    DEFAULT_POLL_HOURS,
     DOMAIN,
     REALTIME_GAP_SECONDS,
     REALTIME_SESSION_SECONDS,
@@ -200,12 +202,33 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
                 and self._settings.assist_turn is not None
                 and self._settings.pull_spring_enabled is not None
             )
-            interval = ROTATION_POLL_SECONDS if have_all else ROTATION_FILL_SECONDS
+            interval = self._poll_seconds if have_all else ROTATION_FILL_SECONDS
             try:
                 await asyncio.wait_for(self._battery_stop.wait(), timeout=interval)
                 return
             except TimeoutError:
                 continue
+
+    @property
+    def _poll_seconds(self) -> float:
+        """Steady background poll interval (per read) from options, in seconds."""
+        hours = self._entry.options.get(CONF_POLL_HOURS, DEFAULT_POLL_HOURS)
+        try:
+            hours = float(hours)
+        except (TypeError, ValueError):
+            hours = float(DEFAULT_POLL_HOURS)
+        return hours * 3600.0 if hours > 0 else ROTATION_POLL_SECONDS
+
+    async def async_refresh_all(self) -> None:
+        """Read every value once over BLE, one at a time (for the Refresh button).
+
+        On-demand: rotates through state/battery/settings sequentially so each read
+        gets a clean connection (HA's Bluetooth proxy dislikes back-to-back reads).
+        """
+        for name in ("state", "battery", "door_type", "assist_turn", "pull_spring"):
+            if self._battery_stop.is_set():
+                return
+            await self._async_do_read(name)
 
     async def _async_do_read(self, name: str) -> None:
         """Read ONE value over BLE (guarded), updating the snapshot on change.
