@@ -11,6 +11,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from aqara_ble import LockEvent
+
 from .bluetooth import AqaraU200BluetoothManager, AqaraU200BluetoothState
 from .client import AqaraU200Client, LockSettings
 from .const import (
@@ -112,10 +114,37 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
                 await task
 
     @callback
-    def _on_realtime_state(self, locked: bool) -> None:
-        """Push a real bolt-position change (from the held ff62 session)."""
-        if locked != self._is_locked:
-            self._is_locked = locked
+    def _on_realtime_event(self, event: LockEvent) -> None:
+        """Consume one live ff62 event: update state/battery and fire an HA event.
+
+        The lock pushes typed events over the held session — lock/unlock (with a
+        source: manual/key/keypad/etc.), a periodic status heartbeat, and its own
+        battery reports. We apply the state and battery to the coordinator and
+        fire ``aqara_u200_event`` on the HA bus so the logbook and automations can
+        react to *who* opened the lock, entirely over Bluetooth (no Matter/cloud).
+        """
+        changed = False
+        if event.locked is not None and event.locked != self._is_locked:
+            self._is_locked = event.locked
+            changed = True
+        if (
+            event.battery_percent is not None
+            and event.battery_percent != self._battery_percent
+        ):
+            self._battery_percent = event.battery_percent
+            changed = True
+        if event.kind in ("locked", "unlocked"):
+            self.hass.bus.async_fire(
+                f"{DOMAIN}_event",
+                {
+                    "entry_id": self._entry.entry_id,
+                    "kind": event.kind,
+                    "locked": event.locked,
+                    "source": event.source,
+                    "timestamp": event.timestamp,
+                },
+            )
+        if changed:
             self.async_set_updated_data(
                 self._build_snapshot(self.bluetooth_manager.state)
             )
@@ -141,7 +170,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
                 async with self._operation_lock:
                     self._listen_handle = asyncio.ensure_future(
                         self.client.async_listen_realtime(
-                            self._on_realtime_state, REALTIME_SESSION_SECONDS
+                            self._on_realtime_event, REALTIME_SESSION_SECONDS
                         )
                     )
                     try:
