@@ -13,8 +13,10 @@ from .bluetooth import AqaraU200BluetoothManager
 from .client import AqaraU200BleClientAdapter, AqaraU200Client, build_cloud_auth
 from .const import (
     CONF_DEVICE_ID,
+    CONF_POLL_HOURS,
     CONF_REALTIME_STATE,
     CONF_REGION,
+    DEFAULT_POLL_HOURS,
     DEFAULT_REALTIME_STATE,
     DEFAULT_REGION,
     DOMAIN,
@@ -26,6 +28,7 @@ PLATFORMS: tuple[Platform, ...] = (
     Platform.LOCK,
     Platform.BINARY_SENSOR,
     Platform.SENSOR,
+    Platform.BUTTON,
 )
 
 # This integration is configured through the UI (config entries) only; it takes
@@ -93,9 +96,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: AqaraU200ConfigEntry) ->
     if entry.options.get(CONF_REALTIME_STATE, DEFAULT_REALTIME_STATE):
         coordinator.async_start_realtime()
 
-    # Periodic BLE battery read (always on; slow cadence).
+    # Background BLE poll — OFF by default (on-demand only). Started only when the
+    # user configures a poll interval; otherwise values come from the Refresh
+    # button, the real-time listener, and lock/unlock operations.
     entry.async_on_unload(coordinator.async_stop_battery)
-    coordinator.async_start_battery()
+    if entry.options.get(CONF_POLL_HOURS, DEFAULT_POLL_HOURS):
+        coordinator.async_start_battery()
 
     entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
     return True

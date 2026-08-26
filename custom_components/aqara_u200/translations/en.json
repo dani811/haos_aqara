@@ -58,15 +58,19 @@
         "state": { "eu": "EU", "uk": "UK", "us": "US" }
       },
       "pull_spring_retraction": { "name": "Pull-spring retraction" }
+    },
+    "button": {
+      "refresh": { "name": "Refresh over Bluetooth" }
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Aqara U200 options",
-        "description": "**Real-time BLE state** keeps a persistent Bluetooth connection open to the lock so Home Assistant sees changes made outside this integration (Matter, key or keypad) instantly. Trade-offs: it reads more battery from the lock and holds one Bluetooth connection slot (limited on Bluetooth proxies, e.g. ESPHome). Leave it OFF if you already get state from Matter — the lock still updates its state after every lock/unlock done from here.",
+        "description": "**Real-time BLE state** holds one Bluetooth connection open so the lock's own push reports (open/close, and more) arrive instantly — the BLE-native way to see keypad/key/manual opens, no polling. **Background poll (hours)** reads battery + settings periodically: 0 = off (on-demand only, via the Refresh button). Every Bluetooth read costs a little lock battery and, on a shared proxy (e.g. ESPHome), a connection slot — keep the poll off or long if that matters.",
         "data": {
-          "realtime_state": "Real-time BLE state (uses more lock battery)"
+          "realtime_state": "Real-time BLE state (push events; one held connection)",
+          "poll_hours": "Background poll every N hours (0 = off / on-demand)"
         }
       }
     }

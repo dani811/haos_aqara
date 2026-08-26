@@ -58,15 +58,19 @@
         "state": { "eu": "UE", "uk": "Reino Unido", "us": "EE. UU." }
       },
       "pull_spring_retraction": { "name": "Retracción del resorte" }
+    },
+    "button": {
+      "refresh": { "name": "Actualizar por Bluetooth" }
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Opciones de Aqara U200",
-        "description": "El **estado BLE en tiempo real** mantiene una conexión Bluetooth persistente con la cerradura para que Home Assistant vea al instante los cambios hechos fuera de esta integración (Matter, llave o teclado). Contrapartidas: consume más batería de la cerradura y ocupa una ranura (slot) de conexión Bluetooth (limitadas en proxies, p.ej. ESPHome). Déjalo DESACTIVADO si ya obtienes el estado por Matter — la cerradura seguirá actualizando su estado tras cada bloqueo/desbloqueo hecho desde aquí.",
+        "description": "El **estado BLE en tiempo real** mantiene UNA conexión Bluetooth abierta para recibir al instante los avisos que la propia cerradura empuja (abrir/cerrar, y más) — la vía BLE nativa para ver aperturas de teclado/llave/manual, sin polling. El **poll de fondo (horas)** lee batería + ajustes periódicamente: 0 = desactivado (solo a demanda, con el botón Actualizar). Cada lectura Bluetooth gasta algo de batería de la cerradura y, en un proxy compartido (p.ej. ESPHome), una ranura de conexión — déjalo desactivado o largo si eso te importa.",
         "data": {
-          "realtime_state": "Estado BLE en tiempo real (gasta más batería de la cerradura)"
+          "realtime_state": "Estado BLE en tiempo real (eventos push; una conexión mantenida)",
+          "poll_hours": "Poll de fondo cada N horas (0 = desactivado / a demanda)"
         }
       }
     }
