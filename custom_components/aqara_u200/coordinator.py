@@ -238,13 +238,14 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
     async def _async_do_read(self, name: str) -> None:
         """Read ONE value over BLE (guarded), updating the snapshot on change.
 
-        Skipped when unreachable, or — for everything but battery — while the
-        real-time listener already holds the bolt position over ff62.
+        Skipped only when the lock is unreachable. Any held real-time listen is
+        preempted so the read gets the connection, then it reconnects.
         """
         if not self.bluetooth_manager.state.reachable:
             return
-        if name != "battery" and self._realtime_task is not None:
-            return
+        # Preempt any held real-time listen so this read gets the connection; the
+        # real-time loop reconnects afterwards. (Earlier this skipped state/settings
+        # whenever real-time was on — the actual cause of their staying 'unknown'.)
         self._preempt_listen()
         try:
             async with self._operation_lock:
