@@ -26,6 +26,12 @@ BATTERY_INITIAL_DELAY_SECONDS = 30.0
 #: Until every value (battery + settings) has been read at least once, retry on
 #: this short interval instead of waiting the full poll period.
 BATTERY_RETRY_SECONDS = 300.0
+#: One value is read per poll cycle (rotating), because HA's Bluetooth proxy only
+#: reliably serves one connect+read per burst to this lock. While any value is
+#: still unread, rotate fast; once all have landed, rotate slowly (each of the ~5
+#: values then refreshes about every 5x this).
+ROTATION_FILL_SECONDS = 45.0
+ROTATION_POLL_SECONDS = 3600.0
 #: The U200 rejects an immediate reconnect (~5 s). Space every BLE read in a poll
 #: cycle (state, battery, and each setting) by this much so back-to-back reads
 #: don't fail on the reconnect rejection.

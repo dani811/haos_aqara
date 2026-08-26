@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from homeassistant.config_entries import ConfigEntry
@@ -15,12 +15,11 @@ from .bluetooth import AqaraU200BluetoothManager, AqaraU200BluetoothState
 from .client import AqaraU200Client, LockSettings
 from .const import (
     BATTERY_INITIAL_DELAY_SECONDS,
-    BATTERY_POLL_SECONDS,
-    BATTERY_RETRY_SECONDS,
-    BLE_READ_GAP_SECONDS,
     DOMAIN,
     REALTIME_GAP_SECONDS,
     REALTIME_SESSION_SECONDS,
+    ROTATION_FILL_SECONDS,
+    ROTATION_POLL_SECONDS,
 )
 from .exceptions import (
     AqaraU200AuthenticationError,
@@ -187,103 +186,41 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             return  # stopped during the initial delay
         except TimeoutError:
             pass
+        tasks = ("state", "battery", "door_type", "assist_turn", "pull_spring")
+        index = 0
         while not self._battery_stop.is_set():
-            # Ground-truth the bolt position too (correct state after a restart,
-            # and a slow backstop for out-of-band changes when real-time is off).
-            # Space each BLE read: the lock rejects immediate reconnects.
-            await self._async_refresh_state()
-            await asyncio.sleep(BLE_READ_GAP_SECONDS)
-            await self._async_refresh_battery()
-            await asyncio.sleep(BLE_READ_GAP_SECONDS)
-            await self._async_refresh_settings()
-            # Retry soon while anything is still unread; settle to the slow poll
-            # once battery + the settings have all landed at least once.
+            # HA's Bluetooth proxy reliably serves only ONE connect+read per burst
+            # for this lock — a second back-to-back read times out. So read exactly
+            # one value per cycle and rotate, giving each read a clean connection.
+            await self._async_do_read(tasks[index % len(tasks)])
+            index += 1
             have_all = (
                 self._battery_percent is not None
                 and self._settings.door_type is not None
                 and self._settings.assist_turn is not None
                 and self._settings.pull_spring_enabled is not None
             )
-            interval = BATTERY_POLL_SECONDS if have_all else BATTERY_RETRY_SECONDS
+            interval = ROTATION_POLL_SECONDS if have_all else ROTATION_FILL_SECONDS
             try:
                 await asyncio.wait_for(self._battery_stop.wait(), timeout=interval)
                 return
             except TimeoutError:
                 continue
 
-    async def _async_refresh_state(self) -> None:
-        """Read the real bolt position once (guarded), updating on change.
+    async def _async_do_read(self, name: str) -> None:
+        """Read ONE value over BLE (guarded), updating the snapshot on change.
 
-        Skipped while the real-time listener is active — its ff62 stream already
-        holds the ground truth, so we avoid a redundant reconnect.
+        Skipped when unreachable, or — for everything but battery — while the
+        real-time listener already holds the bolt position over ff62.
         """
-        if not self.bluetooth_manager.state.reachable or self._realtime_task is not None:
-            return
-        self._preempt_listen()
-        try:
-            async with self._operation_lock:
-                locked = await self.client.async_read_lock_status()
-        except asyncio.CancelledError:
-            raise
-        except AqaraU200AuthenticationError as err:
-            self._last_error_type = type(err).__name__
-            self._entry.async_start_reauth(self.hass)
-            return
-        except Exception as err:  # noqa: BLE001 - transient BLE/cloud errors
-            _LOGGER.debug("lock-status read failed (%s)", type(err).__name__)
-            return
-        if locked is not None and locked != self._is_locked:
-            self._is_locked = locked
-            self.async_set_updated_data(
-                self._build_snapshot(self.bluetooth_manager.state)
-            )
-
-    async def _async_refresh_settings(self) -> None:
-        """Read the static feature settings once (guarded), updating on change."""
-        if not self.bluetooth_manager.state.reachable or self._realtime_task is not None:
-            return
-        self._preempt_listen()
-        try:
-            async with self._operation_lock:
-                settings = await self.client.async_read_settings()
-        except asyncio.CancelledError:
-            raise
-        except AqaraU200AuthenticationError as err:
-            self._last_error_type = type(err).__name__
-            self._entry.async_start_reauth(self.hass)
-            return
-        except Exception as err:  # noqa: BLE001 - transient BLE/cloud errors
-            _LOGGER.debug("settings read failed (%s)", type(err).__name__)
-            return
-        # Sticky merge: a field that didn't answer this time keeps its last value.
-        merged = LockSettings(
-            door_type=settings.door_type
-            if settings.door_type is not None
-            else self._settings.door_type,
-            assist_turn=settings.assist_turn
-            if settings.assist_turn is not None
-            else self._settings.assist_turn,
-            pull_spring_enabled=settings.pull_spring_enabled
-            if settings.pull_spring_enabled is not None
-            else self._settings.pull_spring_enabled,
-            pull_spring_retraction_s=settings.pull_spring_retraction_s
-            if settings.pull_spring_retraction_s is not None
-            else self._settings.pull_spring_retraction_s,
-        )
-        if merged != self._settings:
-            self._settings = merged
-            self.async_set_updated_data(
-                self._build_snapshot(self.bluetooth_manager.state)
-            )
-
-    async def _async_refresh_battery(self) -> None:
-        """Read the battery once (guarded), updating the snapshot on success."""
         if not self.bluetooth_manager.state.reachable:
             return
+        if name != "battery" and self._realtime_task is not None:
+            return
         self._preempt_listen()
         try:
             async with self._operation_lock:
-                percent = await self.client.async_read_battery()
+                value = await self._async_read_one(name)
         except asyncio.CancelledError:
             raise
         except AqaraU200AuthenticationError as err:
@@ -291,13 +228,52 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             self._entry.async_start_reauth(self.hass)
             return
         except Exception as err:  # noqa: BLE001 - transient BLE/cloud errors
-            _LOGGER.debug("battery read failed (%s)", type(err).__name__)
+            _LOGGER.debug("%s read failed (%s)", name, type(err).__name__)
             return
-        if percent is not None and percent != self._battery_percent:
-            self._battery_percent = percent
+        if value is not None and self._apply_read(name, value):
             self.async_set_updated_data(
                 self._build_snapshot(self.bluetooth_manager.state)
             )
+
+    async def _async_read_one(self, name: str) -> object:
+        """Dispatch a single named BLE read to the client boundary."""
+        if name == "state":
+            return await self.client.async_read_lock_status()
+        if name == "battery":
+            return await self.client.async_read_battery()
+        if name == "door_type":
+            return await self.client.async_read_door_type()
+        if name == "assist_turn":
+            return await self.client.async_read_assist_turn()
+        return await self.client.async_read_pull_spring()
+
+    @callback
+    def _apply_read(self, name: str, value: object) -> bool:
+        """Store a read value into local state; return whether it changed."""
+        if name == "state":
+            if value != self._is_locked:
+                self._is_locked = value
+                return True
+            return False
+        if name == "battery":
+            if value != self._battery_percent:
+                self._battery_percent = value
+                return True
+            return False
+        if name == "door_type":
+            new = replace(self._settings, door_type=value)
+        elif name == "assist_turn":
+            new = replace(self._settings, assist_turn=value)
+        else:  # pull_spring -> (enabled, retraction_seconds)
+            new = replace(
+                self._settings,
+                pull_spring_enabled=value[0],
+                pull_spring_retraction_s=value[1],
+            )
+        if new != self._settings:
+            self._settings = new
+            return True
+        return False
 
     @callback
     def async_handle_bluetooth_state(self, state: AqaraU200BluetoothState) -> None:
