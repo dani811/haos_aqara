@@ -15,5 +15,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/dani811/haos_aqara/issues",
   "requirements": ["aqara-ble==1.6.0"],
-  "version": "0.9.1"
+  "version": "0.9.2"
 }

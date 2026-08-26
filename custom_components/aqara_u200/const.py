@@ -30,6 +30,9 @@ BATTERY_RETRY_SECONDS = 300.0
 #: cycle (state, battery, and each setting) by this much so back-to-back reads
 #: don't fail on the reconnect rejection.
 BLE_READ_GAP_SECONDS = 8.0
+#: HA's Bluetooth proxy occasionally drops the lock's notify response (the read
+#: times out and returns None). Retry each read up to this many times.
+BLE_READ_ATTEMPTS = 3
 
 DEFAULT_REGION = "EU"
 SUPPORTED_REGIONS = ("EU", "US", "CN")

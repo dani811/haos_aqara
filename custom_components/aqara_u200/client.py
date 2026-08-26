@@ -29,6 +29,7 @@ from homeassistant.core import HomeAssistant
 
 from .bluetooth import AqaraU200BluetoothManager
 from .const import (
+    BLE_READ_ATTEMPTS,
     BLE_READ_GAP_SECONDS,
     CONF_ACCOUNT,
     CONF_REGION,
@@ -61,6 +62,14 @@ class LockSettings:
     assist_turn: bool | None = None
     pull_spring_enabled: bool | None = None
     pull_spring_retraction_s: int | None = None
+
+
+async def _read_battery_pct(client: ProtocolU200Client) -> int | None:
+    return (await client.battery()).battery_percent
+
+
+async def _read_locked(client: ProtocolU200Client) -> bool | None:
+    return (await client.read_lock_status()).locked
 
 
 class AqaraU200Client(Protocol):
@@ -248,96 +257,33 @@ class AqaraU200BleClientAdapter:
         so the coordinator can trigger reauth; other failures raise
         ``AqaraU200*Error`` so the caller can log and keep the last value.
         """
-        ble_device = self._bluetooth_manager.async_get_ble_device()
-        if ble_device is None:
-            raise AqaraU200BluetoothUnavailableError(
-                "Aqara U200 is not reachable through Home Assistant Bluetooth"
-            )
-        bleak_client: BleakClientWithServiceCache | None = None
-        try:
-            bleak_client = await establish_connection(
-                BleakClientWithServiceCache,
-                ble_device,
-                _CONNECTION_NAME,
-                ble_device_callback=lambda: (
-                    self._bluetooth_manager.async_get_ble_device() or ble_device
-                ),
-            )
-            protocol_client = ProtocolU200Client.from_gatt(
-                auth=self._auth,
-                gatt_client=bleak_client,
-                device_id=self._device_id,
-                region=self._region,
-            )
-            state = await protocol_client.battery()
-            return state.battery_percent
-        except asyncio.CancelledError:
-            raise
-        except Exception as err:
-            if is_invalid_auth_error(err) or (
-                isinstance(err, U200ClientError) and err.phase is FlowPhase.LOGIN
-            ):
-                raise AqaraU200AuthenticationError(
-                    "Aqara rejected the configured credentials"
-                ) from err
-            raise AqaraU200OperationError("Aqara U200 battery read failed") from err
-        finally:
-            if bleak_client is not None:
-                try:
-                    async with asyncio.timeout(_DISCONNECT_TIMEOUT):
-                        await bleak_client.disconnect()
-                except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                    pass
+        return await self._async_read_retry(_read_battery_pct)
 
     async def async_read_lock_status(self) -> bool | None:
         """Read the real bolt position on demand over BLE (LOCK_STATUS, 0x07).
 
         Returns True (locked), False (unlocked), or None if the lock does not
-        answer. Auth failures propagate for reauth; other failures raise
-        ``AqaraU200*Error`` so the caller can log and keep the last value.
+        answer within the retries. Auth failures propagate for reauth.
         """
-        ble_device = self._bluetooth_manager.async_get_ble_device()
-        if ble_device is None:
-            raise AqaraU200BluetoothUnavailableError(
-                "Aqara U200 is not reachable through Home Assistant Bluetooth"
-            )
-        bleak_client: BleakClientWithServiceCache | None = None
-        try:
-            bleak_client = await establish_connection(
-                BleakClientWithServiceCache,
-                ble_device,
-                _CONNECTION_NAME,
-                ble_device_callback=lambda: (
-                    self._bluetooth_manager.async_get_ble_device() or ble_device
-                ),
-            )
-            protocol_client = ProtocolU200Client.from_gatt(
-                auth=self._auth,
-                gatt_client=bleak_client,
-                device_id=self._device_id,
-                region=self._region,
-            )
-            state = await protocol_client.read_lock_status()
-            return state.locked
-        except asyncio.CancelledError:
-            raise
-        except Exception as err:
-            if is_invalid_auth_error(err) or (
-                isinstance(err, U200ClientError) and err.phase is FlowPhase.LOGIN
-            ):
-                raise AqaraU200AuthenticationError(
-                    "Aqara rejected the configured credentials"
-                ) from err
-            raise AqaraU200OperationError(
-                "Aqara U200 lock-status read failed"
-            ) from err
-        finally:
-            if bleak_client is not None:
-                try:
-                    async with asyncio.timeout(_DISCONNECT_TIMEOUT):
-                        await bleak_client.disconnect()
-                except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                    pass
+        return await self._async_read_retry(_read_locked)
+
+    async def _async_read_retry(
+        self, reader: Callable[[ProtocolU200Client], Awaitable[Any]]
+    ) -> Any:
+        """Run one read, retrying on a None result.
+
+        HA's Bluetooth proxy occasionally drops the lock's notify response, so a
+        read times out and returns None even though the next attempt succeeds.
+        Retry up to ``BLE_READ_ATTEMPTS`` times, spacing attempts by the reconnect
+        gap. Auth failures propagate immediately (no point retrying bad creds).
+        """
+        for attempt in range(BLE_READ_ATTEMPTS):
+            value = await self._async_one_read(reader)
+            if value is not None:
+                return value
+            if attempt < BLE_READ_ATTEMPTS - 1:
+                await asyncio.sleep(BLE_READ_GAP_SECONDS)
+        return None
 
     async def _async_one_read(
         self, reader: Callable[[ProtocolU200Client], Awaitable[Any]]
@@ -392,11 +338,11 @@ class AqaraU200BleClientAdapter:
         Each read is independent; a failed one leaves its field None. These change
         rarely, so the coordinator reads them on the slow battery cadence.
         """
-        door_type = await self._async_one_read(lambda c: c.read_door_type())
+        door_type = await self._async_read_retry(lambda c: c.read_door_type())
         await asyncio.sleep(BLE_READ_GAP_SECONDS)
-        assist_turn = await self._async_one_read(lambda c: c.read_assist_turn())
+        assist_turn = await self._async_read_retry(lambda c: c.read_assist_turn())
         await asyncio.sleep(BLE_READ_GAP_SECONDS)
-        pull = await self._async_one_read(lambda c: c.read_pull_spring())
+        pull = await self._async_read_retry(lambda c: c.read_pull_spring())
         return LockSettings(
             door_type=door_type,
             assist_turn=assist_turn,
