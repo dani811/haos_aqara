@@ -57,7 +57,13 @@
         "name": "Tipo de cerradura de puerta",
         "state": { "eu": "UE", "uk": "Reino Unido", "us": "EE. UU." }
       },
-      "pull_spring_retraction": { "name": "Retracción del resorte" }
+      "pull_spring_retraction": { "name": "Retracción del resorte" },
+      "alert_volume": {
+        "name": "Volumen de alerta",
+        "state": { "high": "Alto", "medium": "Medio", "low": "Bajo", "silent": "Silencio" }
+      },
+      "system_volume": { "name": "Volumen del sistema" },
+      "language": { "name": "Idioma" }
     },
     "button": {
       "refresh": { "name": "Actualizar por Bluetooth" }

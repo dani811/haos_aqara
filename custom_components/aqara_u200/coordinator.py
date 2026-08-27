@@ -56,6 +56,11 @@ class AqaraU200RuntimeSnapshot:
     assist_turn: bool | None = None
     pull_spring_enabled: bool | None = None
     pull_spring_retraction_s: int | None = None
+    #: Configuration settings read over BLE (feature 002; None until first read).
+    system_volume: int | None = None
+    language: str | None = None
+    alert_volume: str | None = None
+    alarm_volume: str | None = None
 
 
 class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
@@ -256,7 +261,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         gets a clean connection (HA's Bluetooth proxy dislikes back-to-back reads).
         """
         for index, name in enumerate(
-            ("state", "battery", "door_type", "assist_turn", "pull_spring")
+            ("state", "battery", "door_type", "assist_turn", "pull_spring", "config")
         ):
             if self._battery_stop.is_set():
                 return
@@ -303,6 +308,8 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             return await self.client.async_read_door_type()
         if name == "assist_turn":
             return await self.client.async_read_assist_turn()
+        if name == "config":
+            return await self.client.async_read_settings()
         return await self.client.async_read_pull_spring()
 
     @callback
@@ -322,6 +329,14 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             new = replace(self._settings, door_type=value)
         elif name == "assist_turn":
             new = replace(self._settings, assist_turn=value)
+        elif name == "config":  # LockSettings burst -> volume/language/alert/alarm
+            new = replace(
+                self._settings,
+                system_volume=value.system_volume,
+                language=value.language,
+                alert_volume=value.alert_volume,
+                alarm_volume=value.alarm_volume,
+            )
         else:  # pull_spring -> (enabled, retraction_seconds)
             new = replace(
                 self._settings,
@@ -413,4 +428,8 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             assist_turn=self._settings.assist_turn,
             pull_spring_enabled=self._settings.pull_spring_enabled,
             pull_spring_retraction_s=self._settings.pull_spring_retraction_s,
+            system_volume=self._settings.system_volume,
+            language=self._settings.language,
+            alert_volume=self._settings.alert_volume,
+            alarm_volume=self._settings.alarm_volume,
         )

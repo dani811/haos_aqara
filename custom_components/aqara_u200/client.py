@@ -17,6 +17,9 @@ from aqara_ble import (
     U200ClientError,
 )
 from aqara_ble import (
+    LockSettings as ProtocolLockSettings,
+)
+from aqara_ble import (
     U200Client as ProtocolU200Client,
 )
 from bleak.exc import BleakError
@@ -63,6 +66,13 @@ class LockSettings:
     assist_turn: bool | None = None
     pull_spring_enabled: bool | None = None
     pull_spring_retraction_s: int | None = None
+    #: Configuration settings read in one burst (feature 002). alert_volume is a
+    #: confirmed enum ('high'/'medium'/'low'/'silent'); system_volume is a raw level
+    #: byte, language a code ('es' confirmed), alarm_volume the raw value hex.
+    system_volume: int | None = None
+    language: str | None = None
+    alert_volume: str | None = None
+    alarm_volume: str | None = None
 
 
 async def _read_battery_pct(client: ProtocolU200Client) -> int | None:
@@ -121,6 +131,10 @@ class AqaraU200Client(Protocol):
 
     async def async_read_pull_spring(self) -> tuple[bool, int] | None:
         """Read the pull-spring setting over BLE → (enabled, retraction_s) or None."""
+        ...
+
+    async def async_read_settings(self) -> ProtocolLockSettings | None:
+        """Read volume/language/alert/alarm over BLE in one burst; None if unavailable."""
         ...
 
 
@@ -354,6 +368,10 @@ class AqaraU200BleClientAdapter:
     async def async_read_pull_spring(self) -> tuple[bool, int] | None:
         """Read the pull-spring setting over BLE → (enabled, retraction_s) or None."""
         return await self._async_read_retry(lambda c: c.read_pull_spring())
+
+    async def async_read_settings(self) -> ProtocolLockSettings | None:
+        """Read volume/language/alert/alarm over BLE in one burst (None on failure)."""
+        return await self._async_read_retry(lambda c: c.read_settings())
 
     async def _async_operate(
         self, operation: str, *, listen_after: float = _STATE_LISTEN_SECONDS
