@@ -57,7 +57,13 @@
         "name": "Door lock type",
         "state": { "eu": "EU", "uk": "UK", "us": "US" }
       },
-      "pull_spring_retraction": { "name": "Pull-spring retraction" }
+      "pull_spring_retraction": { "name": "Pull-spring retraction" },
+      "alert_volume": {
+        "name": "Alert volume",
+        "state": { "high": "High", "medium": "Medium", "low": "Low", "silent": "Silent" }
+      },
+      "system_volume": { "name": "System volume" },
+      "language": { "name": "Language" }
     },
     "button": {
       "refresh": { "name": "Refresh over Bluetooth" }

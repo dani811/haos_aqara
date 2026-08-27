@@ -35,6 +35,9 @@ async def async_setup_entry(
             AqaraU200Rssi(entry, coordinator),
             AqaraU200DoorType(entry, coordinator),
             AqaraU200PullSpringRetraction(entry, coordinator),
+            AqaraU200AlertVolume(entry, coordinator),
+            AqaraU200SystemVolume(entry, coordinator),
+            AqaraU200Language(entry, coordinator),
         ]
     )
 
@@ -95,6 +98,55 @@ class AqaraU200PullSpringRetraction(_AqaraU200SensorBase):
     def native_value(self) -> int | None:
         """Return the retraction time in seconds, or None until read."""
         return self.coordinator.data.pull_spring_retraction_s
+
+
+class AqaraU200AlertVolume(_AqaraU200SensorBase):
+    """The alert volume (Alto/Medio/Bajo/Silencio), read over BLE (0x1a byte 4)."""
+
+    _attr_translation_key = "alert_volume"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["high", "medium", "low", "silent"]
+
+    def __init__(self, entry: AqaraU200ConfigEntry, coordinator: AqaraU200Coordinator) -> None:
+        """Initialize the alert-volume sensor."""
+        super().__init__(entry, coordinator, "alert_volume")
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the alert volume level, or None until read / if unrecognised."""
+        value = self.coordinator.data.alert_volume
+        return value if value in self._attr_options else None
+
+
+class AqaraU200SystemVolume(_AqaraU200SensorBase):
+    """The system/voice volume level, read over BLE (0xc3)."""
+
+    _attr_translation_key = "system_volume"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, entry: AqaraU200ConfigEntry, coordinator: AqaraU200Coordinator) -> None:
+        """Initialize the system-volume sensor."""
+        super().__init__(entry, coordinator, "system_volume")
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the raw system-volume level, or None until read."""
+        return self.coordinator.data.system_volume
+
+
+class AqaraU200Language(_AqaraU200SensorBase):
+    """The lock's configured language, read over BLE (0x68)."""
+
+    _attr_translation_key = "language"
+
+    def __init__(self, entry: AqaraU200ConfigEntry, coordinator: AqaraU200Coordinator) -> None:
+        """Initialize the language sensor."""
+        super().__init__(entry, coordinator, "language")
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the language code (e.g. 'es'), or None until read."""
+        return self.coordinator.data.language
 
 
 class AqaraU200Battery(CoordinatorEntity[AqaraU200Coordinator], SensorEntity):
