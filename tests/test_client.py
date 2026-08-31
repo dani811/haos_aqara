@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from aqara_ble import CloudServiceError, LockOperation
+from aqara_ble import CloudServiceError, LockOperation, LockSettings
 from bleak_retry_connector import BleakConnectionError
 
 from custom_components.aqara_u200.client import AqaraU200BleClientAdapter
@@ -148,3 +148,68 @@ async def test_adapter_never_retries_after_operation_starts() -> None:
     connect.assert_awaited_once()
     protocol_client.operate.assert_awaited_once()
     connection.disconnect.assert_awaited_once_with()
+
+
+async def test_async_read_settings_retries_a_completely_empty_burst() -> None:
+    """A settings burst with every field None must be retried, not accepted.
+
+    Confirmed live 2026-08-31: ``read_settings()`` never returns None itself —
+    it always returns a LockSettings, so the generic 'retry on None' check
+    silently treated an all-None burst as a successful read, on every attempt,
+    across multiple restarts. This reproduces exactly that failure mode (two
+    empty bursts, then a real one) and proves it's now retried through.
+    """
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    empty = LockSettings()
+    real = LockSettings(system_volume=5, language="es", alert_volume="high", alarm_volume="10")
+    protocol_client = SimpleNamespace(
+        read_settings=AsyncMock(side_effect=[empty, empty, real])
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ) as connect,
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+        patch("custom_components.aqara_u200.client.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await _adapter(manager).async_read_settings()
+
+    assert result is real
+    assert connect.await_count == 3
+    assert protocol_client.read_settings.await_count == 3
+
+
+async def test_async_read_settings_gives_up_after_all_attempts_stay_empty() -> None:
+    """If every attempt comes back empty, the last (empty) result is returned.
+
+    No exception, no infinite loop — the coordinator's own None/empty checks
+    (async_refresh_all's retry pass) decide what happens next.
+    """
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    empty = LockSettings()
+    protocol_client = SimpleNamespace(read_settings=AsyncMock(return_value=empty))
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ) as connect,
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+        patch("custom_components.aqara_u200.client.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await _adapter(manager).async_read_settings()
+
+    assert result is empty
+    assert connect.await_count == 3  # BLE_READ_ATTEMPTS, no more no less
