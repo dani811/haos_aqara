@@ -24,9 +24,29 @@
  * An explicit `<key>_entity` override in the card config always wins.
  */
 
+// Severity thresholds are deliberately conservative (only flag genuinely low
+// battery / genuinely weak signal) — this is a glance-level warning, not a
+// diagnostic tool. `null` means "no severity", which renders as the normal
+// badge color; only "warn"/"error" get tinted.
+function _batterySeverity(stateObj) {
+  const value = Number(stateObj.state);
+  if (Number.isNaN(value)) return null;
+  if (value <= 15) return "error";
+  if (value <= 30) return "warn";
+  return null;
+}
+
+function _rssiSeverity(stateObj) {
+  const value = Number(stateObj.state);
+  if (Number.isNaN(value)) return null;
+  if (value <= -85) return "error";
+  if (value <= -70) return "warn";
+  return null;
+}
+
 const BADGE_DEFS = [
-  { key: "battery", domain: "sensor", icon: "mdi:battery", suffix: "%", side: "left" },
-  { key: "rssi", domain: "sensor", icon: "mdi:bluetooth", suffix: " dBm", side: "left" },
+  { key: "battery", domain: "sensor", icon: "mdi:battery", suffix: "%", side: "left", severity: _batterySeverity },
+  { key: "rssi", domain: "sensor", icon: "mdi:bluetooth", suffix: " dBm", side: "left", severity: _rssiSeverity },
   { key: "door_type", domain: "sensor", icon: "mdi:door", side: "left" },
   { key: "language", domain: "sensor", icon: "mdi:translate", side: "left" },
   { key: "system_volume", domain: "sensor", icon: "mdi:volume-high", side: "right" },
@@ -149,7 +169,7 @@ class AqaraU200Card extends HTMLElement {
           </div>
           ${
             controlReady
-              ? ""
+              ? `<div class="aqara-card__activity">${this._escape(this._activityLabel(lockState))}</div>`
               : '<div class="aqara-card__notice">Control will be enabled when the HA lock entity is available.</div>'
           }
         </div>
@@ -172,13 +192,17 @@ class AqaraU200Card extends HTMLElement {
     const stateObj = this._state(entityId);
     const known = Boolean(stateObj) && stateObj.state !== "unavailable" && stateObj.state !== "unknown";
     const label = this._badgeLabel(def, stateObj);
+    // Severity tint (low battery / weak signal) only applies once we actually
+    // have a real reading — never guess a color for an unread "–" badge.
+    const severity = known && def.severity ? def.severity(stateObj) : null;
+    const severityClass = severity ? ` is-${severity}` : "";
     // Each side is a flex column (see _css()) — no absolute positioning, no
     // fixed-pixel gutters. A card narrower than the badges' natural width
     // (confirmed live: some dashboards render this as a ~330px popup) just
     // wraps/shrinks normally instead of squeezing the illustration to
     // near-zero, which is what a fixed-padding gutter did.
     return `
-      <button class="aqara-card__badge ${known ? "" : "is-unknown"}"
+      <button class="aqara-card__badge ${known ? "" : "is-unknown"}${severityClass}"
               data-more-info-entity="${this._escape(entityId)}"
               title="${this._escape(entityId)}">
         <ha-icon icon="${def.icon}"></ha-icon>
@@ -196,6 +220,43 @@ class AqaraU200Card extends HTMLElement {
     }
     const suffix = def.suffix || "";
     return `${stateObj.state}${suffix}`;
+  }
+
+  // Lightweight "recent activity" line — just the lock's own last_changed,
+  // already free on every state object, no new entity/event-subscription
+  // machinery needed. Recomputed on every render (i.e. every hass update),
+  // not on its own timer — good enough for a glance, not a stopwatch.
+  _activityLabel(lockState) {
+    if (!lockState?.last_changed) return "";
+    const seconds = (Date.now() - new Date(lockState.last_changed).getTime()) / 1000;
+    const action =
+      lockState.state === "locked" ? "Locked" : lockState.state === "unlocked" ? "Unlocked" : "Changed";
+    return `${action} ${this._formatRelative(seconds)}`;
+  }
+
+  _formatRelative(seconds) {
+    const language = this._hass?.locale?.language || this._hass?.language || "en";
+    const abs = Math.abs(seconds);
+    let value;
+    let unit;
+    if (abs < 60) {
+      value = seconds;
+      unit = "second";
+    } else if (abs < 3600) {
+      value = seconds / 60;
+      unit = "minute";
+    } else if (abs < 86400) {
+      value = seconds / 3600;
+      unit = "hour";
+    } else {
+      value = seconds / 86400;
+      unit = "day";
+    }
+    try {
+      return new Intl.RelativeTimeFormat(language, { numeric: "auto" }).format(-Math.round(value), unit);
+    } catch {
+      return `${Math.max(0, Math.round(value))} ${unit}(s) ago`;
+    }
   }
 
   _buildIllustrationSvg(locked) {
@@ -302,9 +363,20 @@ class AqaraU200Card extends HTMLElement {
         background: var(--card-background-color); border: 1px solid var(--divider-color);
         border-radius: 999px; padding: 4px 10px 4px 6px; font-size: 0.78rem;
         color: var(--primary-text-color); cursor: pointer;
+        transition: transform 0.15s ease, background-color 0.15s ease;
       }
+      /* Tap feedback — a quick, purely-CSS press animation. No JS timer/class
+         bookkeeping needed: :active covers the whole "finger down" duration,
+         which for a tap is exactly the moment that needs to feel responsive. */
+      .aqara-card__badge:active { transform: scale(0.93); }
       .aqara-card__badge ha-icon { --mdc-icon-size: 16px; color: var(--secondary-text-color); flex: none; }
       .aqara-card__badge.is-unknown { opacity: 0.5; }
+      /* Severity tint — only ever applied to a badge with a real reading
+         (see _buildBadge), so this never colors an unread "–" badge. Uses
+         HA's own --warning-color/--error-color theme tokens, not hardcoded
+         hex, so it follows the user's theme like everything else here. */
+      .aqara-card__badge.is-warn ha-icon { color: var(--warning-color, #ffa600); }
+      .aqara-card__badge.is-error ha-icon { color: var(--error-color, #db4437); }
       .aqara-card__badge-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
       .aqara-card__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
       .aqara-card__actions button {
@@ -314,6 +386,9 @@ class AqaraU200Card extends HTMLElement {
       }
       .aqara-card__actions button:disabled { cursor: not-allowed; opacity: .5; }
       .aqara-card__notice { margin-top: 12px; color: var(--secondary-text-color); font-size: 0.9rem; }
+      .aqara-card__activity {
+        margin-top: 10px; text-align: center; color: var(--secondary-text-color); font-size: 0.8rem;
+      }
     `;
   }
 
