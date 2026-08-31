@@ -62,6 +62,7 @@
         "name": "Alert volume",
         "state": { "high": "High", "medium": "Medium", "low": "Low", "silent": "Silent" }
       },
+      "alarm_volume": { "name": "Alarm (siren) volume" },
       "system_volume": { "name": "System volume" },
       "language": { "name": "Language" }
     },

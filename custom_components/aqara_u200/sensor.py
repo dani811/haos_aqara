@@ -36,6 +36,7 @@ async def async_setup_entry(
             AqaraU200DoorType(entry, coordinator),
             AqaraU200PullSpringRetraction(entry, coordinator),
             AqaraU200AlertVolume(entry, coordinator),
+            AqaraU200AlarmVolume(entry, coordinator),
             AqaraU200SystemVolume(entry, coordinator),
             AqaraU200Language(entry, coordinator),
         ]
@@ -116,6 +117,30 @@ class AqaraU200AlertVolume(_AqaraU200SensorBase):
         """Return the alert volume level, or None until read / if unrecognised."""
         value = self.coordinator.data.alert_volume
         return value if value in self._attr_options else None
+
+
+class AqaraU200AlarmVolume(_AqaraU200SensorBase):
+    """The alarm (siren) volume, read over BLE (0x84).
+
+    The coordinator already reads this in the settings burst, but no entity
+    exposed it (a real gap, not a new BLE read). Unlike ``alert_volume``, the
+    decoder (``aqara_ble.decode_alarm_volume``) has not been pinned to a named
+    enum yet — it honestly returns the raw value byte as hex ('00'/'10' are
+    the two confirmed levels, Silencio/Normal, from the write side
+    `build_set_alarm_volume`) rather than a guessed label, so this sensor
+    shows that raw hex as-is.
+    """
+
+    _attr_translation_key = "alarm_volume"
+
+    def __init__(self, entry: AqaraU200ConfigEntry, coordinator: AqaraU200Coordinator) -> None:
+        """Initialize the alarm-volume sensor."""
+        super().__init__(entry, coordinator, "alarm_volume")
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the raw alarm-volume value (hex), or None until read."""
+        return self.coordinator.data.alarm_volume
 
 
 class AqaraU200SystemVolume(_AqaraU200SensorBase):
