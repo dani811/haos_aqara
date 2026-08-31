@@ -193,12 +193,12 @@ class AqaraU200Card extends HTMLElement {
       <svg class="aqara-card__illustration" viewBox="0 0 300 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Aqara U200 illustration">
         <defs>
           <linearGradient id="aqara-panel-face" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="var(--card-background-color, #2b2b2b)"/>
+            <stop offset="0%" stop-color="var(--secondary-background-color, #3a3a3a)"/>
             <stop offset="100%" stop-color="var(--divider-color, #1a1a1a)"/>
           </linearGradient>
           <radialGradient id="aqara-cylinder-face" cx="35%" cy="30%" r="75%">
-            <stop offset="0%" stop-color="var(--primary-color)" stop-opacity="0.35"/>
-            <stop offset="100%" stop-color="var(--divider-color, #1a1a1a)" stop-opacity="0.9"/>
+            <stop offset="0%" stop-color="var(--primary-color)" stop-opacity="0.55"/>
+            <stop offset="100%" stop-color="var(--secondary-background-color, #3a3a3a)"/>
           </radialGradient>
         </defs>
 
