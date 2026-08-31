@@ -1,13 +1,16 @@
 /**
  * Aqara U200 illustrated card.
  *
- * A stylized isometric illustration of the U200 (keypad panel + separate
- * round cylinder/deadbolt unit, matching the real product's two physical
- * pieces) with badges around it showing the lock's confirmed settings, each
- * connected to the drawing by a thin line. Tapping a badge opens Home
- * Assistant's own more-info dialog for that entity — free, built-in inline
- * editing the moment any of these becomes a select/number entity, no custom
- * editor UI to build/maintain here.
+ * A stylized illustration of the U200 (keypad accessory + separate
+ * pill-shaped lock body/cylinder, matching the real product's two physical
+ * pieces) with badges around it showing the lock's confirmed settings.
+ * Tapping a badge opens Home Assistant's own more-info dialog for that
+ * entity — free, built-in inline editing the moment any of these becomes a
+ * select/number entity, no custom per-setting editor to build/maintain here.
+ *
+ * The card itself DOES ship a minimal GUI config editor (`AqaraU200CardEditor`
+ * below, via `static getConfigElement()`) so picking the lock entity doesn't
+ * require hand-written YAML — see that class for what it covers.
  *
  * Every badge here is bound to an entity that already exists and is already
  * read over BLE with confirmed bytes (see docs/devices/u200/operations.md in
@@ -54,6 +57,22 @@ class AqaraU200Card extends HTMLElement {
 
   getGridOptions() {
     return { columns: 8, rows: 6, min_columns: 6, min_rows: 5 };
+  }
+
+  // GUI card editor (Settings → Dashboards → Edit → pick this card, or the
+  // "Show code editor" toggle's opposite) — before this, the only way to set
+  // the required `entity` was to hand-write YAML. Returning a custom element
+  // here is the whole contract; HA mounts it, feeds it `hass`/`config`, and
+  // listens for `config-changed` events (see AqaraU200CardEditor below).
+  static getConfigElement() {
+    return document.createElement("aqara-u200-card-editor");
+  }
+
+  // Pre-fills a sane default (the first lock entity found) when a user adds
+  // this card from the picker, instead of handing them a blank/broken config.
+  static getStubConfig(hass) {
+    const lockEntityId = Object.keys(hass.states).find((id) => id.startsWith("lock."));
+    return { entity: lockEntityId || "" };
   }
 
   // --- entity resolution -----------------------------------------------
@@ -327,6 +346,70 @@ class AqaraU200Card extends HTMLElement {
   }
 }
 
+// --- GUI config editor ------------------------------------------------
+//
+// A minimal visual editor: pick the lock entity (required) and an optional
+// display name. Per-badge entity overrides (`<key>_entity`) stay YAML-only
+// for now — they're an escape hatch for a mismatched entity registry, not
+// something most users need — but the one field everyone needs (which lock)
+// no longer requires opening the raw YAML editor at all.
+class AqaraU200CardEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = config || {};
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  _render() {
+    if (!this._hass) return;
+
+    if (!this._built) {
+      this.innerHTML = `
+        <div class="aqara-editor">
+          <ha-entity-picker id="entity" label="Lock entity (required)" allow-custom-entity></ha-entity-picker>
+          <ha-textfield id="name" label="Card name (optional)"></ha-textfield>
+        </div>
+        <style>
+          .aqara-editor { display: flex; flex-direction: column; gap: 16px; padding: 8px 0; }
+        </style>
+      `;
+      this._entityPicker = this.querySelector("#entity");
+      this._nameField = this.querySelector("#name");
+      this._entityPicker.includeDomains = ["lock"];
+      this._entityPicker.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        this._emitConfig({ entity: ev.detail.value });
+      });
+      this._nameField.addEventListener("input", (ev) => {
+        this._emitConfig({ name: ev.target.value || undefined });
+      });
+      this._built = true;
+    }
+
+    this._entityPicker.hass = this._hass;
+    this._entityPicker.value = this._config.entity || "";
+    this._nameField.value = this._config.name || "";
+  }
+
+  _emitConfig(patch) {
+    const next = { ...this._config, ...patch };
+    if (next.name === undefined) delete next.name;
+    this._config = next;
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: next },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+}
+
+customElements.define("aqara-u200-card-editor", AqaraU200CardEditor);
 customElements.define("aqara-u200-card", AqaraU200Card);
 
 window.customCards = window.customCards || [];
