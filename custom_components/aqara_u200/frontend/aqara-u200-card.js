@@ -207,30 +207,47 @@ class AqaraU200Card extends HTMLElement {
           design, so mixing a small percentage of it into the card background
           guarantees real, theme-independent contrast on both light and dark.
         -->
-        <!-- Keypad panel (left piece) -->
-        <g transform="translate(20,30)">
-          <rect x="0" y="0" width="80" height="120" rx="14" fill="url(#aqara-panel-face)"
+        <!--
+          Shapes approximate the real U200's two physical pieces (see the
+          product photo the user pointed out beta.4's abstract "circle +
+          rounded rect" didn't resemble): a tall pill-shaped lock body with a
+          round thumbturn housing near its top, and a separate keypad
+          accessory whose bottom row is [fingerprint] [0] [checkmark], not a
+          single wide button. Still a simplified icon, not a rendered photo.
+        -->
+        <!-- Keypad accessory (left piece) -->
+        <g transform="translate(14,14)">
+          <rect x="0" y="0" width="74" height="152" rx="16" fill="url(#aqara-panel-face)"
                 stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1.5"/>
-          ${[0, 1, 2].flatMap((row) =>
-            [0, 1, 2].map(
-              (col) =>
-                `<circle cx="${20 + col * 20}" cy="${22 + row * 22}" r="7.5"
+          ${["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+            .map((label, i) => {
+              const col = i % 3;
+              const row = Math.floor(i / 3);
+              return `<circle cx="${18 + col * 19}" cy="${24 + row * 26}" r="8"
                           fill="color-mix(in srgb, var(--primary-text-color) 16%, var(--card-background-color))"
-                          stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="0.75"/>`
-            )
-          ).join("")}
-          <rect x="16" y="94" width="48" height="14" rx="7"
+                          stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="0.75"/>`;
+            })
+            .join("")}
+          <!-- Bottom row: fingerprint/NFC sensor · 0 · confirm (checkmark) -->
+          <rect x="10" y="120" width="16" height="16" rx="4"
                 fill="color-mix(in srgb, var(--primary-text-color) 16%, var(--card-background-color))"
                 stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="0.75"/>
+          <circle cx="37" cy="128" r="8"
+                  fill="color-mix(in srgb, var(--primary-text-color) 16%, var(--card-background-color))"
+                  stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="0.75"/>
+          <circle cx="56" cy="128" r="8" fill="var(--primary-color)"/>
+          <path d="M 52.5 128 l 2.5 2.5 l 5 -5" fill="none" stroke="var(--text-primary-color, #fff)"
+                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </g>
 
-        <!-- Cylinder / deadbolt unit (right piece) -->
-        <g transform="translate(150,20)">
-          <circle cx="65" cy="70" r="58" fill="url(#aqara-cylinder-face)" stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1.5"/>
-          <circle cx="65" cy="70" r="40" fill="none" stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1" opacity="0.6"/>
-          <g class="aqara-card__thumbturn ${cylinderClass}" style="transform-origin: 65px 70px;">
-            <rect x="61" y="34" width="8" height="40" rx="4" fill="var(--primary-color)"/>
-            <circle cx="65" cy="70" r="7" fill="var(--primary-color)"/>
+        <!-- Lock body / cylinder unit (right piece) — tall pill shape -->
+        <g transform="translate(170,10)">
+          <rect x="0" y="0" width="72" height="160" rx="36" fill="url(#aqara-cylinder-face)"
+                stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1.5"/>
+          <circle cx="36" cy="52" r="34" fill="none" stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1" opacity="0.6"/>
+          <g class="aqara-card__thumbturn ${cylinderClass}" style="transform-origin: 36px 52px;">
+            <rect x="32" y="22" width="8" height="34" rx="4" fill="var(--primary-color)"/>
+            <circle cx="36" cy="52" r="7" fill="var(--primary-color)"/>
           </g>
         </g>
       </svg>
