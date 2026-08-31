@@ -185,7 +185,7 @@ class AqaraU200Card extends HTMLElement {
     // is only ever what `lock.<slug>`'s own text says.
     const cylinderClass = locked ? "is-locked" : "is-unlocked";
     return `
-      <svg class="aqara-card__illustration" viewBox="0 0 300 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Aqara U200 illustration">
+      <svg class="aqara-card__illustration" viewBox="8 4 200 172" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Aqara U200 illustration">
         <defs>
           <linearGradient id="aqara-panel-face" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stop-color="color-mix(in srgb, var(--primary-text-color) 10%, var(--card-background-color))"/>
@@ -241,7 +241,7 @@ class AqaraU200Card extends HTMLElement {
         </g>
 
         <!-- Lock body / cylinder unit (right piece) — tall pill shape -->
-        <g transform="translate(170,10)">
+        <g transform="translate(130,10)">
           <rect x="0" y="0" width="72" height="160" rx="36" fill="url(#aqara-cylinder-face)"
                 stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1.5"/>
           <circle cx="36" cy="52" r="34" fill="none" stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1" opacity="0.6"/>
@@ -263,7 +263,7 @@ class AqaraU200Card extends HTMLElement {
          on a narrow (~330px) card/dialog; minmax()'d fr columns instead
          give the illustration a guaranteed fair share at ANY card width. */
       .aqara-card__layout {
-        display: grid; grid-template-columns: minmax(64px, 1fr) minmax(90px, 2fr) minmax(64px, 1fr);
+        display: grid; grid-template-columns: minmax(52px, 1fr) minmax(120px, 2.6fr) minmax(52px, 1fr);
         align-items: center; gap: 8px; min-height: 200px;
       }
       .aqara-card__badges { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
@@ -271,9 +271,13 @@ class AqaraU200Card extends HTMLElement {
       .aqara-card__badges--right { align-items: flex-end; }
       .aqara-card__illustration-wrap { min-width: 0; }
       .aqara-card__illustration { width: 100%; height: auto; display: block; }
+      /* Locking turns left (negative/CCW), unlocking turns right (positive/CW)
+         from a shared vertical rest point — not just two arbitrary angles —
+         so the direction of turn itself carries the open/close meaning,
+         matching how a real thumbturn reads at a glance. */
       .aqara-card__thumbturn { transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
-      .aqara-card__thumbturn.is-locked { transform: rotate(0deg); }
-      .aqara-card__thumbturn.is-unlocked { transform: rotate(42deg); }
+      .aqara-card__thumbturn.is-locked { transform: rotate(-45deg); }
+      .aqara-card__thumbturn.is-unlocked { transform: rotate(45deg); }
       .aqara-card__badge {
         display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0;
         background: var(--card-background-color); border: 1px solid var(--divider-color);
