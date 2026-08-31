@@ -271,19 +271,55 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         return hours * 3600.0 if hours > 0 else ROTATION_POLL_SECONDS
 
     async def async_refresh_all(self) -> None:
-        """Read every value once over BLE, one at a time (for the Refresh button).
+        """Read every value once over BLE, retrying whatever didn't land.
 
         On-demand: rotates through state/battery/settings sequentially so each read
         gets a clean connection (HA's Bluetooth proxy dislikes back-to-back reads).
+
+        Confirmed live 2026-08-31: one full pass can silently drop a read (the
+        'config' burst — volume/language — failed once through a flaky proxy
+        connection while every other read succeeded). ``_async_do_read`` already
+        swallows failures per-item so one bad read doesn't abort the rotation;
+        this adds a single retry pass over just the names still unread after the
+        first lap, so a one-off proxy hiccup doesn't leave a value stuck
+        'unknown' until the next restart or a manual Refresh press.
         """
-        for index, name in enumerate(
-            ("state", "battery", "door_type", "assist_turn", "pull_spring", "config")
-        ):
+        order = ("state", "battery", "door_type", "assist_turn", "pull_spring", "config")
+        await self._async_refresh_pass(order, gap_before_first=False)
+
+        missing = [name for name in order if self._is_unread(name)]
+        if missing:
+            await self._async_refresh_pass(missing, gap_before_first=True)
+
+    async def _async_refresh_pass(self, names: tuple[str, ...] | list[str], *, gap_before_first: bool) -> None:
+        """Read each name in order, pacing every read with REFRESH_GAP_SECONDS."""
+        for index, name in enumerate(names):
             if self._battery_stop.is_set():
                 return
-            if index > 0:
+            if index > 0 or gap_before_first:
                 await asyncio.sleep(REFRESH_GAP_SECONDS)
             await self._async_do_read(name)
+
+    def _is_unread(self, name: str) -> bool:
+        """Return whether ``name`` still has no value from a completed read."""
+        if name == "state":
+            return self._is_locked is None
+        if name == "battery":
+            return self._battery_percent is None
+        if name == "door_type":
+            return self._settings.door_type is None
+        if name == "assist_turn":
+            return self._settings.assist_turn is None
+        if name == "pull_spring":
+            return self._settings.pull_spring_enabled is None
+        # "config" is one burst read (volume/language) — retry it if any part
+        # of the burst is still missing.
+        return (
+            self._settings.system_volume is None
+            or self._settings.language is None
+            or self._settings.alert_volume is None
+            or self._settings.alarm_volume is None
+        )
 
     async def _async_do_read(self, name: str) -> None:
         """Read ONE value over BLE (guarded), updating the snapshot on change.
