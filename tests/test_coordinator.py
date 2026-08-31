@@ -4,10 +4,15 @@ import asyncio
 from unittest.mock import patch
 
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from aqara_ble import LockEvent
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_capture_events,
+)
 
 from custom_components.aqara_u200.bluetooth import AqaraU200BluetoothState
 from custom_components.aqara_u200.client import LockSettings
+from custom_components.aqara_u200.const import DOMAIN
 from custom_components.aqara_u200.coordinator import AqaraU200Coordinator
 from custom_components.aqara_u200.exceptions import (
     AqaraU200AuthenticationError,
@@ -263,3 +268,47 @@ async def test_refresh_all_retries_a_read_that_failed_once(hass) -> None:
     # Everything else read fine on the first pass — no wasted retries.
     assert coordinator.data.is_locked is True
     assert coordinator.data.battery_percent == 88
+
+
+async def test_realtime_unknown_event_fires_on_the_bus(hass) -> None:
+    """An unrecognized ff62 opcode must still reach HA as a real event.
+
+    This is the notification feature's data path: today a wrong-code/keypad-
+    failure push (if the lock sends one at all) decodes as kind='unknown' —
+    ``decode_event`` doesn't recognize the opcode yet, so it keeps ``raw_hex``
+    but no interpreted meaning. Firing it anyway (instead of dropping it like
+    the 'status' heartbeat) means a live capture immediately shows up as a
+    real aqara_u200_event, and the card's notification badge can already
+    react to 'something happened' before the opcode is decoded.
+    """
+    entry = _entry()
+    coordinator = AqaraU200Coordinator(hass, entry, FakeBluetoothManager(), FullReadClient())
+    events = async_capture_events(hass, f"{DOMAIN}_event")
+
+    coordinator._on_realtime_event(
+        LockEvent(raw_hex="ab00112233445566", kind="unknown")
+    )
+    await hass.async_block_till_done()
+
+    assert len(events) == 1
+    assert events[0].data == {
+        "entry_id": entry.entry_id,
+        "kind": "unknown",
+        "locked": None,
+        "source": None,
+        "timestamp": None,
+        "raw_hex": "ab00112233445566",
+    }
+
+
+async def test_realtime_status_heartbeat_does_not_fire_on_the_bus(hass) -> None:
+    """The periodic 0x15 heartbeat is not a notable event — must stay quiet."""
+    coordinator = AqaraU200Coordinator(
+        hass, _entry(), FakeBluetoothManager(), FullReadClient()
+    )
+    events = async_capture_events(hass, f"{DOMAIN}_event")
+
+    coordinator._on_realtime_event(LockEvent(raw_hex="1500000000000000", kind="status"))
+    await hass.async_block_till_done()
+
+    assert events == []

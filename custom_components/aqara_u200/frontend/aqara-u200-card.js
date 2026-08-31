@@ -56,6 +56,21 @@ const BADGE_DEFS = [
   { key: "pull_spring", domain: "binary_sensor", icon: "mdi:gesture-tap", side: "right" },
 ];
 
+// One entry per ff62 event `kind` this card knows how to describe. "unknown"
+// is deliberately included — see coordinator.py's _on_realtime_event: an
+// unrecognized opcode (which is what a wrong-code/keypad-failure push would
+// currently decode as, since the protocol hasn't been taught that opcode
+// yet) still fires with this kind and its raw_hex, so the toast can already
+// say "something happened" today and will get a precise label the moment a
+// live capture teaches decode_event() what the opcode means — no further
+// plumbing needed on this side.
+const EVENT_TOAST_DEFS = {
+  locked: { icon: "mdi:lock-check", label: "Locked" },
+  unlocked: { icon: "mdi:lock-open-variant", label: "Unlocked" },
+  unknown: { icon: "mdi:alert-circle-outline", label: "Event detected" },
+};
+const EVENT_TOAST_DURATION_MS = 6000;
+
 class AqaraU200Card extends HTMLElement {
   setConfig(config) {
     if (!config || typeof config !== "object" || !config.entity) {
@@ -68,6 +83,69 @@ class AqaraU200Card extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    this._subscribeToEvents();
+    this._render();
+  }
+
+  // Dreame's own map card uses exactly this pattern — a small floating toast
+  // over the card's own content, not a full dialog or a separate entity —
+  // for "something happened" moments (errors, faults). Same idea here: an
+  // ff62 event doesn't need its own dedicated notification entity, just a
+  // transient badge over the illustration whenever aqara_u200_event fires
+  // for this card's device.
+  connectedCallback() {
+    this._subscribeToEvents();
+  }
+
+  disconnectedCallback() {
+    if (this._unsubscribeEvents) {
+      this._unsubscribeEvents();
+      this._unsubscribeEvents = undefined;
+    }
+    if (this._toastTimer) {
+      clearTimeout(this._toastTimer);
+      this._toastTimer = undefined;
+    }
+  }
+
+  _subscribeToEvents() {
+    // Idempotent: hass is reassigned on every state update, but the
+    // subscription itself only needs to happen once per connected instance.
+    if (this._unsubscribeEvents || this._subscribingEvents || !this._hass?.connection) return;
+    this._subscribingEvents = true;
+    this._hass.connection
+      .subscribeEvents((event) => this._handleBusEvent(event), "aqara_u200_event")
+      .then((unsubscribe) => {
+        this._unsubscribeEvents = unsubscribe;
+      })
+      .catch(() => {
+        // Best-effort: no toast feature if the connection can't subscribe
+        // (e.g. a restricted/limited-access frontend session). The rest of
+        // the card works fine without it.
+      })
+      .finally(() => {
+        this._subscribingEvents = false;
+      });
+  }
+
+  _handleBusEvent(event) {
+    if (!this._config) return;
+    const entry = this._hass?.entities?.[this._config.entity];
+    if (!entry || event.data.entry_id !== entry.config_entry_id) return; // not this device
+    const def = EVENT_TOAST_DEFS[event.data.kind];
+    if (!def) return;
+    this._toast = {
+      icon: def.icon,
+      label: def.label,
+      source: event.data.source,
+      title: event.data.kind === "unknown" ? `raw: ${event.data.raw_hex}` : "",
+    };
+    if (this._toastTimer) clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => {
+      this._toast = undefined;
+      this._toastTimer = undefined;
+      this._render();
+    }, EVENT_TOAST_DURATION_MS);
     this._render();
   }
 
@@ -154,6 +232,7 @@ class AqaraU200Card extends HTMLElement {
     this.innerHTML = `
       <ha-card header="${this._escape(title)}">
         <div class="aqara-card">
+          ${this._buildToast()}
           <div class="aqara-card__layout">
             <div class="aqara-card__badges aqara-card__badges--left">${leftBadges.join("")}</div>
             <div class="aqara-card__illustration-wrap">${this._buildIllustrationSvg(locked)}</div>
@@ -220,6 +299,22 @@ class AqaraU200Card extends HTMLElement {
     }
     const suffix = def.suffix || "";
     return `${stateObj.state}${suffix}`;
+  }
+
+  // Dreame-style transient toast for a live ff62 event (see coordinator.py's
+  // _on_realtime_event and EVENT_TOAST_DEFS above). Empty string when there's
+  // nothing to show — kept inline in _render()'s template rather than a
+  // separate conditional block, matching how _activityLabel/notice do it.
+  _buildToast() {
+    if (!this._toast) return "";
+    const { icon, label, source, title } = this._toast;
+    const text = source ? `${label} (${source})` : label;
+    return `
+      <div class="aqara-card__toast" title="${this._escape(title || "")}">
+        <ha-icon icon="${icon}"></ha-icon>
+        <span>${this._escape(text)}</span>
+      </div>
+    `;
   }
 
   // Lightweight "recent activity" line — just the lock's own last_changed,
@@ -336,7 +431,21 @@ class AqaraU200Card extends HTMLElement {
 
   _css() {
     return `
-      .aqara-card { padding: 0 16px 16px; }
+      .aqara-card { padding: 0 16px 16px; position: relative; }
+      /* Floating toast for a live event — same pattern as the Dreame Vacuum
+         card's own .toast (top-center, absolute, over the card content),
+         translated to this card's theme tokens instead of Dreame's
+         --surface-bg/--border-color. Auto-dismissed by _handleBusEvent's
+         timer, not by CSS — this is just the resting visual state. */
+      .aqara-card__toast {
+        position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
+        display: flex; align-items: center; gap: 6px; z-index: 1;
+        background: var(--card-background-color); border: 1px solid var(--divider-color);
+        border-radius: 999px; padding: 6px 14px; font-size: 0.82rem;
+        color: var(--primary-text-color); box-shadow: var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,.2));
+        max-width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .aqara-card__toast ha-icon { --mdc-icon-size: 16px; color: var(--primary-color); flex: none; }
       /* Three real grid columns (badges | illustration | badges) — no fixed-
          pixel gutters, no absolute positioning. Confirmed live 2026-08-31:
          a fixed 140px gutter squeezed the illustration to near-zero width
