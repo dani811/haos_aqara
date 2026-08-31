@@ -312,3 +312,76 @@ async def test_realtime_status_heartbeat_does_not_fire_on_the_bus(hass) -> None:
     await hass.async_block_till_done()
 
     assert events == []
+
+
+class SettableClient(FullReadClient):
+    """A client whose settings SET calls actually change what the next read returns.
+
+    Mirrors the real lock's behavior closely enough to prove the coordinator
+    re-reads after a SET rather than optimistically guessing: the value shown
+    afterward is whatever this fake's ``read_settings`` reports, which only
+    changes because the SET call mutated it — not because the coordinator
+    assumed the requested value stuck.
+    """
+
+    def __init__(self) -> None:
+        self.alert_volume = "high"
+        self.alarm_volume = "10"
+        self.set_alert_volume_calls: list[int] = []
+        self.set_alarm_volume_calls: list[bool] = []
+
+    async def async_read_settings(self) -> LockSettings:
+        return LockSettings(
+            system_volume=5,
+            language="es",
+            alert_volume=self.alert_volume,
+            alarm_volume=self.alarm_volume,
+        )
+
+    async def async_set_alert_volume(self, level: int) -> None:
+        self.set_alert_volume_calls.append(level)
+        self.alert_volume = {1: "high", 2: "medium", 3: "low", 4: "silent"}[level]
+
+    async def async_set_alarm_volume(self, *, silent: bool) -> None:
+        self.set_alarm_volume_calls.append(silent)
+        self.alarm_volume = "00" if silent else "10"
+
+
+async def test_set_alert_volume_calls_the_client_then_shows_the_reread_value(hass) -> None:
+    """A SET flows to the client and the resulting state is a fresh re-read."""
+    client = SettableClient()
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+
+    await coordinator.async_set_alert_volume(3)  # Bajo
+
+    assert client.set_alert_volume_calls == [3]
+    assert coordinator.data.alert_volume == "low"
+    assert coordinator.operation_in_progress is False
+    assert coordinator.data.last_operation == "set_alert_volume"
+
+
+async def test_set_alarm_volume_calls_the_client_then_shows_the_reread_value(hass) -> None:
+    """A SET flows to the client and the resulting state is a fresh re-read."""
+    client = SettableClient()
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+
+    await coordinator.async_set_alarm_volume(silent=True)
+
+    assert client.set_alarm_volume_calls == [True]
+    assert coordinator.data.alarm_volume == "00"
+
+
+async def test_set_alert_volume_propagates_a_failed_write(hass) -> None:
+    """A SET that the lock never acknowledges must surface as a real error."""
+
+    class FailingSetClient(SettableClient):
+        async def async_set_alert_volume(self, level: int) -> None:
+            raise AqaraU200OperationError("Aqara U200 did not acknowledge set:0x02:...")
+
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), FailingSetClient())
+
+    with pytest.raises(AqaraU200OperationError):
+        await coordinator.async_set_alert_volume(1)
+
+    assert coordinator.operation_in_progress is False
+    assert coordinator.data.last_error_type == "AqaraU200OperationError"

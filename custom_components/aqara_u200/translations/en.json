@@ -58,16 +58,21 @@
         "state": { "eu": "EU", "uk": "UK", "us": "US" }
       },
       "pull_spring_retraction": { "name": "Pull-spring retraction" },
-      "alert_volume": {
-        "name": "Alert volume",
-        "state": { "high": "High", "medium": "Medium", "low": "Low", "silent": "Silent" }
-      },
-      "alarm_volume": { "name": "Alarm (siren) volume" },
       "system_volume": { "name": "System volume" },
       "language": { "name": "Language" }
     },
     "button": {
       "refresh": { "name": "Refresh over Bluetooth" }
+    },
+    "select": {
+      "alert_volume": {
+        "name": "Alert volume",
+        "state": { "high": "High", "medium": "Medium", "low": "Low", "silent": "Silent" }
+      },
+      "alarm_volume": {
+        "name": "Alarm (siren) volume",
+        "state": { "normal": "Normal", "silent": "Silent" }
+      }
     }
   },
   "options": {

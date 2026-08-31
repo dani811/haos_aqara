@@ -13,8 +13,11 @@ from aqara_ble import (
     FlowPhase,
     LockEvent,
     LockOperation,
+    LockOperationWrite,
     OperationInProgressError,
     U200ClientError,
+    build_set_alarm_volume,
+    build_set_alert_volume,
 )
 from aqara_ble import (
     LockSettings as ProtocolLockSettings,
@@ -135,6 +138,14 @@ class AqaraU200Client(Protocol):
 
     async def async_read_settings(self) -> ProtocolLockSettings | None:
         """Read volume/language/alert/alarm over BLE in one burst; None if unavailable."""
+        ...
+
+    async def async_set_alert_volume(self, level: int) -> None:
+        """Set the alert-volume level over BLE (1=Alto..4=Silencio); raises if unacked."""
+        ...
+
+    async def async_set_alarm_volume(self, *, silent: bool) -> None:
+        """Set the alarm (siren) volume over BLE; raises if unacked."""
         ...
 
 
@@ -418,6 +429,43 @@ class AqaraU200BleClientAdapter:
         return await self._async_read_retry(
             lambda c: c.read_settings(), is_useful=_has_any_field
         )
+
+    async def async_set_alert_volume(self, level: int) -> None:
+        """Set the alert-volume level over BLE (0x02/kind=0x04, byte-confirmed).
+
+        Raises :class:`AqaraU200OperationError` if the lock didn't answer.
+        """
+        await self._async_send_write(build_set_alert_volume(level))
+
+    async def async_set_alarm_volume(self, *, silent: bool) -> None:
+        """Set the alarm (siren) volume over BLE (0x83, byte-confirmed).
+
+        Raises :class:`AqaraU200OperationError` if the lock didn't answer.
+        """
+        await self._async_send_write(build_set_alarm_volume(silent=silent))
+
+    async def _async_send_write(self, write: LockOperationWrite) -> None:
+        """Open one session, send a confirmed SET frame, and require an ACK.
+
+        Reuses ``read_burst`` — built for reads — as a generic "send one frame,
+        get its opcode-correlated reply" primitive: a SET write is answered the
+        same way a read is (docs/devices/u200/operations.md), so no separate
+        aqara-ble send method is needed. Any non-empty response counts as
+        acknowledged; this deliberately doesn't guess at the exact ACK byte
+        layout (only LANGUAGE's happens to be documented) — "did it answer at
+        all" is the honest signal actually available for the others. A single
+        attempt, like ``async_lock``/``async_unlock`` — retrying a SET blind
+        risks masking a real failure as a stale success.
+        """
+        frame_spec = f"{write.write_prefix:02x}:{write.payload.hex()}"
+
+        async def _writer(client: ProtocolU200Client) -> str | None:
+            results = await client.read_burst([frame_spec])
+            return results[0][1]
+
+        response = await self._async_one_read(_writer)
+        if response is None:
+            raise AqaraU200OperationError(f"Aqara U200 did not acknowledge {write.operation}")
 
     async def _async_operate(
         self, operation: str, *, listen_after: float = _STATE_LISTEN_SECONDS

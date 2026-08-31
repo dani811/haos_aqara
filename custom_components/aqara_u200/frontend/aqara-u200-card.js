@@ -50,8 +50,11 @@ const BADGE_DEFS = [
   { key: "door_type", domain: "sensor", icon: "mdi:door", side: "left" },
   { key: "language", domain: "sensor", icon: "mdi:translate", side: "left" },
   { key: "system_volume", domain: "sensor", icon: "mdi:volume-high", side: "right" },
-  { key: "alert_volume", domain: "sensor", icon: "mdi:bell-ring", side: "right" },
-  { key: "alarm_volume", domain: "sensor", icon: "mdi:alarm-light", side: "right" },
+  // Editable settings (select entities): tapping the badge opens HA's own
+  // more-info dialog, which renders a dropdown for a select entity for free
+  // — see the file header comment for why this card has no custom editor.
+  { key: "alert_volume", domain: "select", icon: "mdi:bell-ring", side: "right" },
+  { key: "alarm_volume", domain: "select", icon: "mdi:alarm-light", side: "right" },
   { key: "assist_turn", domain: "binary_sensor", icon: "mdi:rotate-3d-variant", side: "right" },
   { key: "pull_spring", domain: "binary_sensor", icon: "mdi:gesture-tap", side: "right" },
 ];
@@ -371,6 +374,19 @@ class AqaraU200Card extends HTMLElement {
     // a neutral default — it is a drawing, not a state claim; the real state
     // is only ever what `lock.<slug>`'s own text says.
     const cylinderClass = locked ? "is-locked" : "is-unlocked";
+    // The real U200 cylinder turns two full revolutions, not a subtle nudge —
+    // only play that spin on an actual known->known transition (never on
+    // first render, and never when `locked` merely stays the same across an
+    // unrelated hass update, e.g. a battery tick). `this._lastLocked` is
+    // still the PRE-render value here — `_render()` updates it only after
+    // building this markup — so comparing against it directly tells apart a
+    // real flip from a same-state re-render.
+    const isRealTransition =
+      this._lastLocked !== undefined &&
+      this._lastLocked !== null &&
+      locked !== null &&
+      locked !== this._lastLocked;
+    const spinClass = isRealTransition ? (locked ? " is-spinning-to-locked" : " is-spinning-to-unlocked") : "";
     return `
       <svg class="aqara-card__illustration" viewBox="0 0 196 188" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Aqara U200 illustration">
         <defs>
@@ -423,10 +439,16 @@ class AqaraU200Card extends HTMLElement {
           <rect x="0" y="0" width="92" height="172" rx="46" fill="url(#aqara-cylinder-face)"
                 stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1.5"/>
           <circle cx="46" cy="46" r="38" fill="none" stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1" opacity="0.6"/>
-          <!-- Grip: two rounded bars with a center channel, like the real thumbturn -->
-          <g class="aqara-card__thumbturn ${cylinderClass}" style="transform-origin: 46px 46px;">
+          <!-- Grip: two rounded bars with a center channel, like the real thumbturn.
+               The small dot above the bars breaks their 180°-symmetry — without
+               it, spinning the bars two full turns would look identical to
+               spinning them a quarter-turn, since a mirrored bar pair reads the
+               same every 180°. The dot is what actually lets the eye register
+               "this went around twice". -->
+          <g class="aqara-card__thumbturn ${cylinderClass}${spinClass}" style="transform-origin: 46px 46px;">
             <rect x="36" y="26" width="7" height="40" rx="3.5" fill="var(--primary-color)"/>
             <rect x="49" y="26" width="7" height="40" rx="3.5" fill="var(--primary-color)"/>
+            <circle cx="46" cy="20" r="3" fill="var(--primary-color)"/>
           </g>
           <circle class="aqara-card__led ${cylinderClass}" cx="46" cy="155" r="3"/>
         </g>
@@ -468,10 +490,42 @@ class AqaraU200Card extends HTMLElement {
       /* Locking turns left (negative/CCW), unlocking turns right (positive/CW)
          from a shared vertical rest point — not just two arbitrary angles —
          so the direction of turn itself carries the open/close meaning,
-         matching how a real thumbturn reads at a glance. */
-      .aqara-card__thumbturn { transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+         matching how a real thumbturn reads at a glance. The resting angles
+         (±45deg) are just an artistic "it's turned" cue, unchanged from
+         before; is-spinning-to-* (below) plays the real U200's actual two
+         full revolutions on top of that same resting pose, only on a genuine
+         state flip (see _buildIllustrationSvg's isRealTransition). A plain
+         CSS transition can't do this reliably here — this card replaces its
+         whole innerHTML on every render, so there is no "previous style" on
+         the DOM element for a transition to interpolate from; a @keyframes
+         animation is self-contained and always plays its own from->to path
+         regardless of DOM history. */
       .aqara-card__thumbturn.is-locked { transform: rotate(-45deg); }
       .aqara-card__thumbturn.is-unlocked { transform: rotate(45deg); }
+      .aqara-card__thumbturn.is-spinning-to-locked {
+        animation: aqara-spin-to-locked 1.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      }
+      .aqara-card__thumbturn.is-spinning-to-unlocked {
+        animation: aqara-spin-to-unlocked 1.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      }
+      /* -765deg / 765deg = ±45deg (the normal resting pose) plus two extra
+         full turns (720deg) — the literal degree value is what the browser
+         animates through, so a bigger number here really does spin further,
+         even though it lands on the same visual angle as ±45deg. */
+      @keyframes aqara-spin-to-locked {
+        from { transform: rotate(45deg); }
+        to { transform: rotate(-765deg); }
+      }
+      @keyframes aqara-spin-to-unlocked {
+        from { transform: rotate(-45deg); }
+        to { transform: rotate(765deg); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .aqara-card__thumbturn.is-spinning-to-locked,
+        .aqara-card__thumbturn.is-spinning-to-unlocked {
+          animation: none;
+        }
+      }
       /* Small status dot near the base of the lock body — a cheap extra
          state cue (amber = locked, accent = unlocked) that costs one circle,
          not a whole new shape. */

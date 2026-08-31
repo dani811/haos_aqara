@@ -29,6 +29,7 @@ PLATFORMS: tuple[Platform, ...] = (
     Platform.BINARY_SENSOR,
     Platform.SENSOR,
     Platform.BUTTON,
+    Platform.SELECT,
 )
 
 # This integration is configured through the UI (config entries) only; it takes

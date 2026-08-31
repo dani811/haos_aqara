@@ -213,3 +213,72 @@ async def test_async_read_settings_gives_up_after_all_attempts_stay_empty() -> N
 
     assert result is empty
     assert connect.await_count == 3  # BLE_READ_ATTEMPTS, no more no less
+
+
+async def test_async_set_alert_volume_sends_the_confirmed_frame() -> None:
+    """async_set_alert_volume() sends the byte-confirmed 0x02 SET frame via read_burst."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        read_burst=AsyncMock(return_value=[("020202040e", "020000000203")])
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        await _adapter(manager).async_set_alert_volume(2)  # 2 = Medio
+
+    protocol_client.read_burst.assert_awaited_once_with(["01:020202040e"])
+
+
+async def test_async_set_alarm_volume_sends_the_confirmed_frame() -> None:
+    """async_set_alarm_volume() sends the byte-confirmed 0x83 SET frame via read_burst."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        read_burst=AsyncMock(return_value=[("83020007", "830000")])
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        await _adapter(manager).async_set_alarm_volume(silent=True)
+
+    protocol_client.read_burst.assert_awaited_once_with(["01:83020007"])
+
+
+async def test_async_set_alert_volume_raises_when_the_lock_never_answers() -> None:
+    """A SET write with no ACK is a real failure, not a silent no-op."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(read_burst=AsyncMock(return_value=[("020201040d", None)]))
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+        pytest.raises(AqaraU200OperationError),
+    ):
+        await _adapter(manager).async_set_alert_volume(1)
