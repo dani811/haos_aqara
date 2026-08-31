@@ -109,14 +109,16 @@ class AqaraU200Card extends HTMLElement {
     const locked = rawState === "locked" ? true : rawState === "unlocked" ? false : null;
     const controlReady = Boolean(lockState);
 
-    const badges = BADGE_DEFS.map((def) => this._buildBadge(def));
+    const leftBadges = BADGE_DEFS.filter((d) => d.side === "left").map((def) => this._buildBadge(def));
+    const rightBadges = BADGE_DEFS.filter((d) => d.side === "right").map((def) => this._buildBadge(def));
 
     this.innerHTML = `
       <ha-card header="${this._escape(title)}">
         <div class="aqara-card">
-          <div class="aqara-card__illustration-wrap">
-            ${this._buildIllustrationSvg(locked)}
-            ${badges.map((b) => b.html).join("")}
+          <div class="aqara-card__layout">
+            <div class="aqara-card__badges aqara-card__badges--left">${leftBadges.join("")}</div>
+            <div class="aqara-card__illustration-wrap">${this._buildIllustrationSvg(locked)}</div>
+            <div class="aqara-card__badges aqara-card__badges--right">${rightBadges.join("")}</div>
           </div>
           <div class="aqara-card__actions">
             <button data-action="lock" ${controlReady ? "" : "disabled"}>
@@ -151,26 +153,19 @@ class AqaraU200Card extends HTMLElement {
     const stateObj = this._state(entityId);
     const known = Boolean(stateObj) && stateObj.state !== "unavailable" && stateObj.state !== "unknown";
     const label = this._badgeLabel(def, stateObj);
-    // Badges stack down the left/right margin, evenly spaced; a short FIXED-
-    // length stub (not tied to the SVG's own 0..300 coordinate space, which
-    // scales independently of these CSS pixels) points from each badge
-    // toward the illustration — precise geometric anchoring would need a
-    // post-layout measurement pass (ResizeObserver), left for a later
-    // iteration once this is seen rendered in a real dashboard.
-    const sameSide = BADGE_DEFS.filter((d) => d.side === def.side);
-    const slot = sameSide.indexOf(def);
-    const top = 14 + slot * 34;
-    const html = `
-      <div class="aqara-card__line aqara-card__line--${def.side}" style="top:${top + 12}px;"></div>
-      <button class="aqara-card__badge aqara-card__badge--${def.side} ${known ? "" : "is-unknown"}"
-              style="top:${top}px;"
+    // Each side is a flex column (see _css()) — no absolute positioning, no
+    // fixed-pixel gutters. A card narrower than the badges' natural width
+    // (confirmed live: some dashboards render this as a ~330px popup) just
+    // wraps/shrinks normally instead of squeezing the illustration to
+    // near-zero, which is what a fixed-padding gutter did.
+    return `
+      <button class="aqara-card__badge ${known ? "" : "is-unknown"}"
               data-more-info-entity="${this._escape(entityId)}"
               title="${this._escape(entityId)}">
         <ha-icon icon="${def.icon}"></ha-icon>
         <span class="aqara-card__badge-label">${this._escape(label)}</span>
       </button>
     `;
-    return { html };
   }
 
   _badgeLabel(def, stateObj) {
@@ -193,36 +188,46 @@ class AqaraU200Card extends HTMLElement {
       <svg class="aqara-card__illustration" viewBox="0 0 300 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Aqara U200 illustration">
         <defs>
           <linearGradient id="aqara-panel-face" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="var(--secondary-background-color, #3a3a3a)"/>
-            <stop offset="100%" stop-color="var(--divider-color, #1a1a1a)"/>
+            <stop offset="0%" stop-color="color-mix(in srgb, var(--primary-text-color) 10%, var(--card-background-color))"/>
+            <stop offset="100%" stop-color="color-mix(in srgb, var(--primary-text-color) 24%, var(--card-background-color))"/>
           </linearGradient>
           <radialGradient id="aqara-cylinder-face" cx="35%" cy="30%" r="75%">
             <stop offset="0%" stop-color="var(--primary-color)" stop-opacity="0.55"/>
-            <stop offset="100%" stop-color="var(--secondary-background-color, #3a3a3a)"/>
+            <stop offset="100%" stop-color="color-mix(in srgb, var(--primary-text-color) 14%, var(--card-background-color))"/>
           </radialGradient>
         </defs>
 
+        <!--
+          Fills use color-mix() against --primary-text-color instead of
+          --secondary-background-color: confirmed live 2026-08-31 that on at
+          least one real HA theme --secondary-background-color resolves to a
+          near-white, half-transparent value (rgba(245,245,245,0.5)) that is
+          nearly invisible against a light card — the beta.3 "fix" wasn't
+          enough. --primary-text-color is always a solid, opaque color by
+          design, so mixing a small percentage of it into the card background
+          guarantees real, theme-independent contrast on both light and dark.
+        -->
         <!-- Keypad panel (left piece) -->
         <g transform="translate(20,30)">
           <rect x="0" y="0" width="80" height="120" rx="14" fill="url(#aqara-panel-face)"
-                stroke="var(--divider-color)" stroke-width="1.5"/>
+                stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1.5"/>
           ${[0, 1, 2].flatMap((row) =>
             [0, 1, 2].map(
               (col) =>
                 `<circle cx="${20 + col * 20}" cy="${22 + row * 22}" r="7.5"
-                          fill="var(--secondary-background-color, #3a3a3a)"
-                          stroke="var(--divider-color)" stroke-width="0.75"/>`
+                          fill="color-mix(in srgb, var(--primary-text-color) 16%, var(--card-background-color))"
+                          stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="0.75"/>`
             )
           ).join("")}
           <rect x="16" y="94" width="48" height="14" rx="7"
-                fill="var(--secondary-background-color, #3a3a3a)"
-                stroke="var(--divider-color)" stroke-width="0.75"/>
+                fill="color-mix(in srgb, var(--primary-text-color) 16%, var(--card-background-color))"
+                stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="0.75"/>
         </g>
 
         <!-- Cylinder / deadbolt unit (right piece) -->
         <g transform="translate(150,20)">
-          <circle cx="65" cy="70" r="58" fill="url(#aqara-cylinder-face)" stroke="var(--divider-color)" stroke-width="1.5"/>
-          <circle cx="65" cy="70" r="40" fill="none" stroke="var(--divider-color)" stroke-width="1" opacity="0.6"/>
+          <circle cx="65" cy="70" r="58" fill="url(#aqara-cylinder-face)" stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1.5"/>
+          <circle cx="65" cy="70" r="40" fill="none" stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1" opacity="0.6"/>
           <g class="aqara-card__thumbturn ${cylinderClass}" style="transform-origin: 65px 70px;">
             <rect x="61" y="34" width="8" height="40" rx="4" fill="var(--primary-color)"/>
             <circle cx="65" cy="70" r="7" fill="var(--primary-color)"/>
@@ -235,33 +240,32 @@ class AqaraU200Card extends HTMLElement {
   _css() {
     return `
       .aqara-card { padding: 0 16px 16px; }
-      .aqara-card__illustration-wrap {
-        position: relative; min-height: 240px; margin: 0 auto; max-width: 560px;
-        padding: 0 140px; box-sizing: border-box;
+      /* Three real grid columns (badges | illustration | badges) — no fixed-
+         pixel gutters, no absolute positioning. Confirmed live 2026-08-31:
+         a fixed 140px gutter squeezed the illustration to near-zero width
+         on a narrow (~330px) card/dialog; minmax()'d fr columns instead
+         give the illustration a guaranteed fair share at ANY card width. */
+      .aqara-card__layout {
+        display: grid; grid-template-columns: minmax(64px, 1fr) minmax(90px, 2fr) minmax(64px, 1fr);
+        align-items: center; gap: 8px; min-height: 200px;
       }
+      .aqara-card__badges { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+      .aqara-card__badges--left { align-items: flex-start; }
+      .aqara-card__badges--right { align-items: flex-end; }
+      .aqara-card__illustration-wrap { min-width: 0; }
       .aqara-card__illustration { width: 100%; height: auto; display: block; }
       .aqara-card__thumbturn { transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
       .aqara-card__thumbturn.is-locked { transform: rotate(0deg); }
       .aqara-card__thumbturn.is-unlocked { transform: rotate(42deg); }
-      /* Badges stack in the left/right padding gutters reserved above; the
-         stub line is a short fixed-width tick pointing toward the drawing —
-         see _buildBadge()'s comment for why it isn't geometrically anchored. */
-      .aqara-card__line {
-        position: absolute; height: 1px; width: 18px; background: var(--divider-color); pointer-events: none;
-      }
-      .aqara-card__line--left { left: 122px; }
-      .aqara-card__line--right { right: 122px; }
       .aqara-card__badge {
-        position: absolute; display: flex; align-items: center; gap: 6px;
+        display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0;
         background: var(--card-background-color); border: 1px solid var(--divider-color);
         border-radius: 999px; padding: 4px 10px 4px 6px; font-size: 0.78rem;
-        color: var(--primary-text-color); cursor: pointer; max-width: 128px;
+        color: var(--primary-text-color); cursor: pointer;
       }
-      .aqara-card__badge--left { left: 0; }
-      .aqara-card__badge--right { right: 0; }
       .aqara-card__badge ha-icon { --mdc-icon-size: 16px; color: var(--secondary-text-color); flex: none; }
       .aqara-card__badge.is-unknown { opacity: 0.5; }
-      .aqara-card__badge-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .aqara-card__badge-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
       .aqara-card__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
       .aqara-card__actions button {
         min-height: 40px; border: 0; border-radius: 10px; cursor: pointer;
