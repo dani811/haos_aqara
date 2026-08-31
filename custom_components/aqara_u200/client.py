@@ -293,22 +293,31 @@ class AqaraU200BleClientAdapter:
         return await self._async_read_retry(_read_locked)
 
     async def _async_read_retry(
-        self, reader: Callable[[ProtocolU200Client], Awaitable[Any]]
+        self,
+        reader: Callable[[ProtocolU200Client], Awaitable[Any]],
+        *,
+        is_useful: Callable[[Any], bool] = lambda value: value is not None,
     ) -> Any:
-        """Run one read, retrying on a None result.
+        """Run one read, retrying while the result isn't useful.
 
         HA's Bluetooth proxy occasionally drops the lock's notify response, so a
         read times out and returns None even though the next attempt succeeds.
         Retry up to ``BLE_READ_ATTEMPTS`` times, spacing attempts by the reconnect
         gap. Auth failures propagate immediately (no point retrying bad creds).
+
+        ``is_useful`` lets a caller define "worth keeping" beyond "not None" —
+        needed for ``async_read_settings`` below, whose underlying read never
+        returns None itself (see that method's docstring for why the default
+        check silently let a completely empty burst through as "success").
         """
+        value = None
         for attempt in range(BLE_READ_ATTEMPTS):
             value = await self._async_one_read(reader)
-            if value is not None:
+            if is_useful(value):
                 return value
             if attempt < BLE_READ_ATTEMPTS - 1:
                 await asyncio.sleep(BLE_READ_GAP_SECONDS)
-        return None
+        return value
 
     async def _async_one_read(
         self, reader: Callable[[ProtocolU200Client], Awaitable[Any]]
@@ -370,8 +379,35 @@ class AqaraU200BleClientAdapter:
         return await self._async_read_retry(lambda c: c.read_pull_spring())
 
     async def async_read_settings(self) -> ProtocolLockSettings | None:
-        """Read volume/language/alert/alarm over BLE in one burst (None on failure)."""
-        return await self._async_read_retry(lambda c: c.read_settings())
+        """Read volume/language/alert/alarm over BLE in one burst.
+
+        ``aqara_ble``'s ``read_settings()`` never returns ``None`` itself — it
+        always returns a ``LockSettings``, with individual fields left ``None``
+        for whichever opcode frame in the burst didn't get a real answer. That
+        means the generic "retry on None" in ``_async_read_retry`` never
+        actually retried this call even when EVERY field came back empty —
+        confirmed live 2026-08-31: across multiple HA restarts and manual
+        Refresh presses, the whole settings burst silently returned a
+        technically-non-None-but-useless ``LockSettings`` every single time,
+        so this never got a second attempt (and the coordinator's own
+        rotation-level retry, added right after to fix what looked like the
+        same symptom, couldn't help either — it only re-triggers a read that
+        already came back with nothing, it doesn't change what "came back with
+        nothing" means at this layer). Retry here on "no field came back", not
+        just on an outright None.
+        """
+
+        def _has_any_field(settings: ProtocolLockSettings | None) -> bool:
+            return settings is not None and (
+                settings.system_volume is not None
+                or settings.language is not None
+                or settings.alert_volume is not None
+                or settings.alarm_volume is not None
+            )
+
+        return await self._async_read_retry(
+            lambda c: c.read_settings(), is_useful=_has_any_field
+        )
 
     async def _async_operate(
         self, operation: str, *, listen_after: float = _STATE_LISTEN_SECONDS
