@@ -365,7 +365,11 @@ class AqaraU200CardEditor extends HTMLElement {
   }
 
   _render() {
-    if (!this._hass) return;
+    // HA's editor lifecycle doesn't guarantee setConfig() runs before hass is
+    // first assigned — confirmed live 2026-08-31: assigning .hass on a freshly
+    // created editor (before .setConfig()) threw here because _config was
+    // still undefined. Guard on both, not just hass.
+    if (!this._hass || !this._config) return;
 
     if (!this._built) {
       this.innerHTML = `
