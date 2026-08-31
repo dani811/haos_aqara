@@ -356,7 +356,17 @@ class AqaraU200BleClientAdapter:
                 raise AqaraU200AuthenticationError(
                     "Aqara rejected the configured credentials"
                 ) from err
-            _LOGGER.debug("Aqara U200 setting read failed (%s)", type(err).__name__)
+            # The exception message is safe to log in full here: at this point
+            # it can only come from establish_connection() (bleak/BlueZ-level
+            # connect failure — e.g. "not found", "timed out", a D-Bus error
+            # string) or ProtocolU200Client.from_gatt()'s own setup, never from
+            # inside an authenticated protocol exchange — no session material,
+            # no BLE payload bytes are in scope yet. Logging only the class
+            # name (as before) made every live failure indistinguishable from
+            # every other one; confirmed live 2026-08-31 the class name alone
+            # gave no way to tell "lock unreachable" from "GATT connect timed
+            # out" from anything else.
+            _LOGGER.debug("Aqara U200 read failed (%s): %s", type(err).__name__, err)
             return None
         finally:
             if bleak_client is not None:
