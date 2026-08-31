@@ -227,3 +227,39 @@ async def test_initial_sync_reads_everything_on_setup(hass) -> None:
     assert coordinator.data.language == "es"
     assert coordinator.data.alert_volume == "high"
     assert coordinator.data.alarm_volume == "10"
+
+
+class FlakyConfigReadClient(FullReadClient):
+    """Fails the 'config' burst exactly once, like the flaky proxy seen live."""
+
+    def __init__(self) -> None:
+        self.settings_calls = 0
+
+    async def async_read_settings(self) -> LockSettings:
+        self.settings_calls += 1
+        if self.settings_calls == 1:
+            raise TimeoutError("proxy dropped the connection")
+        return await super().async_read_settings()
+
+
+async def test_refresh_all_retries_a_read_that_failed_once(hass) -> None:
+    """A single failed read must not stay unpopulated for the whole rotation.
+
+    Confirmed live 2026-08-31: the 'config' burst (volume/language) can fail
+    once through a flaky Bluetooth-proxy connection while every other read in
+    the same rotation succeeds. async_refresh_all must retry just that gap
+    instead of leaving it 'unknown' until the next restart or a manual
+    Refresh press.
+    """
+    client = FlakyConfigReadClient()
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+
+    with patch("custom_components.aqara_u200.coordinator.asyncio.sleep"):
+        await coordinator.async_refresh_all()
+
+    assert client.settings_calls == 2
+    assert coordinator.data.language == "es"
+    assert coordinator.data.system_volume == 5
+    # Everything else read fine on the first pass — no wasted retries.
+    assert coordinator.data.is_locked is True
+    assert coordinator.data.battery_percent == 88
