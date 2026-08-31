@@ -430,6 +430,63 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         """Serialize and execute an unlock request through the client boundary."""
         await self._async_run_operation("unlock", self.client.async_unlock)
 
+    async def async_set_alert_volume(self, level: int) -> None:
+        """Serialize an alert-volume SET, then re-read it to confirm the real value."""
+        await self._async_run_set_operation(
+            "set_alert_volume", lambda: self.client.async_set_alert_volume(level)
+        )
+
+    async def async_set_alarm_volume(self, *, silent: bool) -> None:
+        """Serialize an alarm-volume SET, then re-read it to confirm the real value."""
+        await self._async_run_set_operation(
+            "set_alarm_volume", lambda: self.client.async_set_alarm_volume(silent=silent)
+        )
+
+    async def _async_run_set_operation(
+        self, operation: str, action: Callable[[], Awaitable[None]]
+    ) -> None:
+        """Run one settings-write operation, then re-read the config burst.
+
+        Unlike ``_async_run_operation`` (lock/unlock), a SET write has no bolt
+        position to observe — it confirms itself by re-reading the same
+        ``config`` burst the SET belongs to, so the entity ends up showing
+        what the lock actually reports now, not an optimistic guess of what
+        the write probably did.
+        """
+        self._preempt_listen()
+        async with self._operation_lock:
+            state = self.bluetooth_manager.state
+            if not state.reachable:
+                raise AqaraU200BluetoothUnavailableError(
+                    "Aqara U200 is not reachable through a connectable Bluetooth adapter"
+                )
+
+            self._operation_in_progress = True
+            self._last_operation = operation
+            self._last_error_type = None
+            self.async_set_updated_data(self._build_snapshot(state))
+
+            try:
+                await action()
+                value = await self.client.async_read_settings()
+                if value is not None:
+                    self._apply_read("config", value)
+            except AqaraU200AuthenticationError as err:
+                self._last_error_type = type(err).__name__
+                self._entry.async_start_reauth(self.hass)
+                raise
+            except AqaraU200Error as err:
+                self._last_error_type = type(err).__name__
+                raise
+            except Exception as err:
+                self._last_error_type = type(err).__name__
+                raise AqaraU200OperationError(f"Aqara U200 {operation} failed") from err
+            finally:
+                self._operation_in_progress = False
+                self.async_set_updated_data(
+                    self._build_snapshot(self.bluetooth_manager.state)
+                )
+
     async def _async_run_operation(
         self,
         operation: str,
