@@ -372,70 +372,63 @@ class AqaraU200Card extends HTMLElement {
     // is only ever what `lock.<slug>`'s own text says.
     const cylinderClass = locked ? "is-locked" : "is-unlocked";
     return `
-      <svg class="aqara-card__illustration" viewBox="8 4 200 172" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Aqara U200 illustration">
+      <svg class="aqara-card__illustration" viewBox="0 0 196 188" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Aqara U200 illustration">
         <defs>
-          <linearGradient id="aqara-panel-face" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="color-mix(in srgb, var(--primary-text-color) 10%, var(--card-background-color))"/>
-            <stop offset="100%" stop-color="color-mix(in srgb, var(--primary-text-color) 24%, var(--card-background-color))"/>
-          </linearGradient>
           <radialGradient id="aqara-cylinder-face" cx="35%" cy="30%" r="75%">
-            <stop offset="0%" stop-color="var(--primary-color)" stop-opacity="0.55"/>
+            <stop offset="0%" stop-color="var(--primary-color)" stop-opacity="0.5"/>
             <stop offset="100%" stop-color="color-mix(in srgb, var(--primary-text-color) 14%, var(--card-background-color))"/>
           </radialGradient>
         </defs>
 
         <!--
-          Fills use color-mix() against --primary-text-color instead of
-          --secondary-background-color: confirmed live 2026-08-31 that on at
-          least one real HA theme --secondary-background-color resolves to a
-          near-white, half-transparent value (rgba(245,245,245,0.5)) that is
-          nearly invisible against a light card — the beta.3 "fix" wasn't
-          enough. --primary-text-color is always a solid, opaque color by
-          design, so mixing a small percentage of it into the card background
-          guarantees real, theme-independent contrast on both light and dark.
+          Redrawn 2026-08-31 from an official Aqara U200 product photo the
+          user shared (supersedes the earlier abstract 3x3-grid guess, which
+          was wrong). Both pieces use the SAME capsule primitive — a fully
+          rounded pill, rx = half width — matching the real hardware: the
+          keypad is a slim capsule, the lock body a wide one whose rounded
+          top reads as the turn knob's circular face. Keypad layout is 2
+          columns x 5 rows (1-9, 0), a lock/confirm function row below it,
+          and the fingerprint sensor sits alone at the base — it is NOT part
+          of the button grid. No digit or "(NFC)" labels are drawn (they'd
+          be unreadable at this size); this stays a simplified icon, not a
+          rendered photo.
         -->
-        <!--
-          Shapes approximate the real U200's two physical pieces (see the
-          product photo the user pointed out beta.4's abstract "circle +
-          rounded rect" didn't resemble): a tall pill-shaped lock body with a
-          round thumbturn housing near its top, and a separate keypad
-          accessory whose bottom row is [fingerprint] [0] [checkmark], not a
-          single wide button. Still a simplified icon, not a rendered photo.
-        -->
-        <!-- Keypad accessory (left piece) -->
-        <g transform="translate(14,14)">
-          <rect x="0" y="0" width="74" height="152" rx="16" fill="url(#aqara-panel-face)"
+
+        <!-- Keypad (left piece) -->
+        <g transform="translate(8,8)">
+          <rect x="0" y="0" width="70" height="172" rx="35"
+                fill="color-mix(in srgb, var(--primary-text-color) 10%, var(--card-background-color))"
                 stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1.5"/>
-          ${["1", "2", "3", "4", "5", "6", "7", "8", "9"]
-            .map((label, i) => {
-              const col = i % 3;
-              const row = Math.floor(i / 3);
-              return `<circle cx="${18 + col * 19}" cy="${24 + row * 26}" r="8"
-                          fill="color-mix(in srgb, var(--primary-text-color) 16%, var(--card-background-color))"
-                          stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="0.75"/>`;
-            })
+          ${[0, 1, 2, 3, 4]
+            .flatMap((row) =>
+              [0, 1].map(
+                (col) => `<circle cx="${21 + col * 28}" cy="${28 + row * 22}" r="7"
+                          fill="color-mix(in srgb, var(--primary-text-color) 16%, var(--card-background-color))"/>`
+              )
+            )
             .join("")}
-          <!-- Bottom row: fingerprint/NFC sensor · 0 · confirm (checkmark) -->
-          <rect x="10" y="120" width="16" height="16" rx="4"
-                fill="color-mix(in srgb, var(--primary-text-color) 16%, var(--card-background-color))"
-                stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="0.75"/>
-          <circle cx="37" cy="128" r="8"
-                  fill="color-mix(in srgb, var(--primary-text-color) 16%, var(--card-background-color))"
-                  stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="0.75"/>
-          <circle cx="56" cy="128" r="8" fill="var(--primary-color)"/>
-          <path d="M 52.5 128 l 2.5 2.5 l 5 -5" fill="none" stroke="var(--text-primary-color, #fff)"
-                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- Function row: lock (outline) · confirm (accent + checkmark) -->
+          <circle cx="21" cy="140" r="7" fill="none"
+                  stroke="color-mix(in srgb, var(--primary-text-color) 45%, transparent)" stroke-width="1.5"/>
+          <circle cx="49" cy="140" r="7" fill="var(--primary-color)"/>
+          <path d="M 46 140 l 2 2 l 4.5 -4.5" fill="none" stroke="var(--text-primary-color, #fff)"
+                stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- Fingerprint sensor — standalone at the base, not a grid key -->
+          <circle cx="35" cy="160" r="9" fill="none"
+                  stroke="color-mix(in srgb, var(--primary-text-color) 45%, transparent)" stroke-width="1.5"/>
         </g>
 
-        <!-- Lock body / cylinder unit (right piece) — tall pill shape -->
-        <g transform="translate(130,10)">
-          <rect x="0" y="0" width="72" height="160" rx="36" fill="url(#aqara-cylinder-face)"
+        <!-- Lock body (right piece) — wide capsule; its rounded top is the turn knob face -->
+        <g transform="translate(96,8)">
+          <rect x="0" y="0" width="92" height="172" rx="46" fill="url(#aqara-cylinder-face)"
                 stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1.5"/>
-          <circle cx="36" cy="52" r="34" fill="none" stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1" opacity="0.6"/>
-          <g class="aqara-card__thumbturn ${cylinderClass}" style="transform-origin: 36px 52px;">
-            <rect x="32" y="22" width="8" height="34" rx="4" fill="var(--primary-color)"/>
-            <circle cx="36" cy="52" r="7" fill="var(--primary-color)"/>
+          <circle cx="46" cy="46" r="38" fill="none" stroke="color-mix(in srgb, var(--primary-text-color) 35%, transparent)" stroke-width="1" opacity="0.6"/>
+          <!-- Grip: two rounded bars with a center channel, like the real thumbturn -->
+          <g class="aqara-card__thumbturn ${cylinderClass}" style="transform-origin: 46px 46px;">
+            <rect x="36" y="26" width="7" height="40" rx="3.5" fill="var(--primary-color)"/>
+            <rect x="49" y="26" width="7" height="40" rx="3.5" fill="var(--primary-color)"/>
           </g>
+          <circle class="aqara-card__led ${cylinderClass}" cx="46" cy="155" r="3"/>
         </g>
       </svg>
     `;
@@ -479,6 +472,12 @@ class AqaraU200Card extends HTMLElement {
       .aqara-card__thumbturn { transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
       .aqara-card__thumbturn.is-locked { transform: rotate(-45deg); }
       .aqara-card__thumbturn.is-unlocked { transform: rotate(45deg); }
+      /* Small status dot near the base of the lock body — a cheap extra
+         state cue (amber = locked, accent = unlocked) that costs one circle,
+         not a whole new shape. */
+      .aqara-card__led { transition: fill 0.3s ease; }
+      .aqara-card__led.is-locked { fill: var(--warning-color, #ffa600); }
+      .aqara-card__led.is-unlocked { fill: var(--primary-color); }
       .aqara-card__badge {
         display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0;
         background: var(--card-background-color); border: 1px solid var(--divider-color);
