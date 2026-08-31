@@ -128,10 +128,22 @@ class AqaraU200Card extends HTMLElement {
       });
   }
 
+  // The lock entity's own registry entry has no config_entry_id field at
+  // all (confirmed live 2026-08-31: it carries device_id, translation_key,
+  // etc., but not the config entry) — that lives one hop further, on the
+  // device registry entry, as `primary_config_entry`. Matching directly
+  // against `entry.config_entry_id` (both sides undefined) silently always
+  // "matched" in an early test; this is the real path.
+  _thisDeviceEntryId() {
+    const entry = this._hass?.entities?.[this._config.entity];
+    const device = entry ? this._hass?.devices?.[entry.device_id] : undefined;
+    return device?.primary_config_entry;
+  }
+
   _handleBusEvent(event) {
     if (!this._config) return;
-    const entry = this._hass?.entities?.[this._config.entity];
-    if (!entry || event.data.entry_id !== entry.config_entry_id) return; // not this device
+    const entryId = this._thisDeviceEntryId();
+    if (!entryId || event.data.entry_id !== entryId) return; // not this device
     const def = EVENT_TOAST_DEFS[event.data.kind];
     if (!def) return;
     this._toast = {
