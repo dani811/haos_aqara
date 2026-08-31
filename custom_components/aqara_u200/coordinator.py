@@ -125,8 +125,19 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         The lock pushes typed events over the held session — lock/unlock (with a
         source: manual/key/keypad/etc.), a periodic status heartbeat, and its own
         battery reports. We apply the state and battery to the coordinator and
-        fire ``aqara_u200_event`` on the HA bus so the logbook and automations can
-        react to *who* opened the lock, entirely over Bluetooth (no Matter/cloud).
+        fire ``aqara_u200_event`` on the HA bus so the logbook, automations, and
+        the card's own notification badge can react — entirely over Bluetooth
+        (no Matter/cloud).
+
+        "unknown" (an ff62 opcode ``decode_event`` doesn't recognize yet) is
+        included on purpose, not filtered out: a wrong-code/keypad-failure push
+        — if the lock sends one at all — would currently decode as exactly this,
+        carrying its ``raw_hex`` but no interpreted meaning. Firing it means a
+        live capture immediately shows up as a real HA event (and the card can
+        show a generic "something happened" badge) instead of silently
+        vanishing until ``decode_event`` is taught the opcode. "status" (the
+        periodic heartbeat) is excluded — it is not a notable event, just a
+        keepalive with no position.
         """
         changed = False
         if event.locked is not None and event.locked != self._is_locked:
@@ -138,7 +149,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         ):
             self._battery_percent = event.battery_percent
             changed = True
-        if event.kind in ("locked", "unlocked"):
+        if event.kind in ("locked", "unlocked", "unknown"):
             self.hass.bus.async_fire(
                 f"{DOMAIN}_event",
                 {
@@ -147,6 +158,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
                     "locked": event.locked,
                     "source": event.source,
                     "timestamp": event.timestamp,
+                    "raw_hex": event.raw_hex,
                 },
             )
         if changed:
