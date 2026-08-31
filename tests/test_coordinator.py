@@ -7,6 +7,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.aqara_u200.bluetooth import AqaraU200BluetoothState
+from custom_components.aqara_u200.client import LockSettings
 from custom_components.aqara_u200.coordinator import AqaraU200Coordinator
 from custom_components.aqara_u200.exceptions import (
     AqaraU200AuthenticationError,
@@ -170,3 +171,59 @@ async def test_cancellation_releases_operation_state_and_lock(hass) -> None:
     # Prove the asyncio.Lock itself was also released by executing another action.
     await coordinator.async_lock()
     assert client.calls == ["unlock", "lock"]
+
+
+class FullReadClient:
+    """Client answering every read the initial-sync rotation performs."""
+
+    control_enabled = True
+
+    async def async_read_lock_status(self) -> bool | None:
+        return True
+
+    async def async_read_battery(self) -> int | None:
+        return 88
+
+    async def async_read_door_type(self) -> str | None:
+        return "eu"
+
+    async def async_read_assist_turn(self) -> bool | None:
+        return False
+
+    async def async_read_pull_spring(self) -> tuple[bool, int] | None:
+        return (True, 2)
+
+    async def async_read_settings(self) -> LockSettings:
+        return LockSettings(
+            system_volume=5,
+            language="es",
+            alert_volume="high",
+            alarm_volume="10",
+        )
+
+
+async def test_initial_sync_reads_everything_on_setup(hass) -> None:
+    """async_start_initial_sync must populate every value without user action.
+
+    This is the fix for 'nothing shows until I press Refresh' — it schedules
+    the same rotation the Refresh button uses as a background task so a fresh
+    install or an HA restart eventually reads everything on its own.
+    """
+    coordinator = AqaraU200Coordinator(
+        hass, _entry(), FakeBluetoothManager(), FullReadClient()
+    )
+
+    with patch("custom_components.aqara_u200.coordinator.asyncio.sleep"):
+        coordinator.async_start_initial_sync()
+        await hass.async_block_till_done()
+
+    assert coordinator.data.is_locked is True
+    assert coordinator.data.battery_percent == 88
+    assert coordinator.data.door_type == "eu"
+    assert coordinator.data.assist_turn is False
+    assert coordinator.data.pull_spring_enabled is True
+    assert coordinator.data.pull_spring_retraction_s == 2
+    assert coordinator.data.system_volume == 5
+    assert coordinator.data.language == "es"
+    assert coordinator.data.alert_volume == "high"
+    assert coordinator.data.alarm_volume == "10"

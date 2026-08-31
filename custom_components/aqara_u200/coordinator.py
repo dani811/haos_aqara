@@ -191,6 +191,22 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             await asyncio.sleep(REALTIME_GAP_SECONDS)
 
     @callback
+    def async_start_initial_sync(self) -> None:
+        """Kick off one full BLE read rotation in the background, unconditionally.
+
+        Runs once per config-entry setup — both on a fresh install and on every
+        Home Assistant restart — so entities populate on their own within a few
+        minutes instead of staying 'unknown' until the user presses the Refresh
+        button or opts into background polling. Fire-and-forget: `setup_entry`
+        must not block on this (a full rotation takes ~2-3 minutes, see
+        `REFRESH_GAP_SECONDS`), so it's scheduled as a background task exactly
+        like the real-time listener and the battery poll.
+        """
+        self.config_entry.async_create_background_task(
+            self.hass, self.async_refresh_all(), f"{DOMAIN}_initial_sync"
+        )
+
+    @callback
     def async_start_battery(self) -> None:
         """Start the periodic BLE battery poll (once after startup, then hourly-ish)."""
         if self._battery_task is not None:
