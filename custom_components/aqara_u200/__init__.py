@@ -91,6 +91,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: AqaraU200ConfigEntry) ->
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Sync once in the background on every setup — a fresh install AND every HA
+    # restart both call async_setup_entry, so this is "sync on install and on
+    # startup" without special-casing either. Unconditional (not gated by the
+    # real-time/poll options below): those control *ongoing* updates, this is
+    # the one-shot initial read so entities aren't stuck on 'unknown' until the
+    # user presses Refresh. Fire-and-forget — a full rotation takes minutes
+    # (see REFRESH_GAP_SECONDS), so it must not block entry setup.
+    coordinator.async_start_initial_sync()
+
     # Opt-in real-time BLE state (persistent listen). Off by default.
     entry.async_on_unload(coordinator.async_stop_realtime)
     if entry.options.get(CONF_REALTIME_STATE, DEFAULT_REALTIME_STATE):
