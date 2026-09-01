@@ -62,7 +62,9 @@
       "language": { "name": "Idioma" }
     },
     "button": {
-      "refresh": { "name": "Actualizar por Bluetooth" }
+      "refresh": { "name": "Actualizar por Bluetooth" },
+      "enable_auxiliary_locking_on_close": { "name": "Activar bloqueo automático al cerrar" },
+      "enable_auxiliary_locking_relock": { "name": "Activar re-bloqueo de seguridad" }
     },
     "select": {
       "alert_volume": {
@@ -73,6 +75,12 @@
         "name": "Volumen de alarma",
         "state": { "normal": "Normal", "silent": "Silencio" }
       }
+    },
+    "number": {
+      "alert_delay": { "name": "Retraso de alerta (puerta abierta)" },
+      "verify_fail_time": { "name": "Duración del bloqueo de teclado" },
+      "auto_lockup_relock_delay": { "name": "Retraso del re-bloqueo de seguridad" },
+      "auto_lock_on_close_delay": { "name": "Retraso del bloqueo automático al cerrar" }
     }
   },
   "options": {

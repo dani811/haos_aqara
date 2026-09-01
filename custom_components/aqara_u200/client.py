@@ -17,7 +17,13 @@ from aqara_ble import (
     OperationInProgressError,
     U200ClientError,
     build_set_alarm_volume,
+    build_set_alert_delay,
     build_set_alert_volume,
+    build_set_auto_lock_on_close_delay_time,
+    build_set_auto_lockup_delay_time,
+    build_set_auxiliary_locking_on_close_enabled,
+    build_set_auxiliary_locking_relock_enabled,
+    build_set_verify_fail_time,
 )
 from aqara_ble import (
     LockSettings as ProtocolLockSettings,
@@ -146,6 +152,38 @@ class AqaraU200Client(Protocol):
 
     async def async_set_alarm_volume(self, *, silent: bool) -> None:
         """Set the alarm (siren) volume over BLE; raises if unacked."""
+        ...
+
+    async def async_set_alert_delay(self, seconds: int) -> None:
+        """Set the open-door alarm delay ('Retraso de alerta') over BLE; raises if unacked."""
+        ...
+
+    async def async_set_verify_fail_time(self, seconds: int) -> None:
+        """Set the keypad-lockout duration ('Bloqueo de verificación') over BLE; raises if unacked."""
+        ...
+
+    async def async_set_auto_lockup_relock_delay(self, seconds: int) -> None:
+        """Set the 'Re-bloqueo de seguridad' auto re-lock delay over BLE; raises if unacked."""
+        ...
+
+    async def async_set_auto_lock_on_close_delay(self, seconds: int) -> None:
+        """Set the 'Bloqueo automático al cerrar' delay over BLE; raises if unacked."""
+        ...
+
+    async def async_enable_auxiliary_locking_on_close(self) -> None:
+        """Enable 'Bloqueo automático al cerrar' over BLE; raises if unacked.
+
+        Only the ENABLE frame has been captured live — there is no confirmed
+        disable frame yet, so this is one-directional (see aqara_ble.lock_ops).
+        """
+        ...
+
+    async def async_enable_auxiliary_locking_relock(self) -> None:
+        """Enable 'Re-bloqueo de seguridad' over BLE; raises if unacked.
+
+        Only the ENABLE frame has been captured live — there is no confirmed
+        disable frame yet, so this is one-directional (see aqara_ble.lock_ops).
+        """
         ...
 
 
@@ -443,6 +481,48 @@ class AqaraU200BleClientAdapter:
         Raises :class:`AqaraU200OperationError` if the lock didn't answer.
         """
         await self._async_send_write(build_set_alarm_volume(silent=silent))
+
+    async def async_set_alert_delay(self, seconds: int) -> None:
+        """Set the open-door alarm delay over BLE (0x18, byte-confirmed).
+
+        Raises :class:`AqaraU200OperationError` if the lock didn't answer.
+        """
+        await self._async_send_write(build_set_alert_delay(seconds))
+
+    async def async_set_verify_fail_time(self, seconds: int) -> None:
+        """Set the keypad-lockout duration over BLE (0xaf, byte-confirmed).
+
+        Raises :class:`AqaraU200OperationError` if the lock didn't answer.
+        """
+        await self._async_send_write(build_set_verify_fail_time(seconds))
+
+    async def async_set_auto_lockup_relock_delay(self, seconds: int) -> None:
+        """Set the 'Re-bloqueo de seguridad' delay over BLE (0xd5, byte-confirmed).
+
+        Raises :class:`AqaraU200OperationError` if the lock didn't answer.
+        """
+        await self._async_send_write(build_set_auto_lockup_delay_time(seconds))
+
+    async def async_set_auto_lock_on_close_delay(self, seconds: int) -> None:
+        """Set the 'Bloqueo automático al cerrar' delay over BLE (0xd5, byte-confirmed).
+
+        Raises :class:`AqaraU200OperationError` if the lock didn't answer.
+        """
+        await self._async_send_write(build_set_auto_lock_on_close_delay_time(seconds))
+
+    async def async_enable_auxiliary_locking_on_close(self) -> None:
+        """Enable 'Bloqueo automático al cerrar' over BLE (0xc4, byte-confirmed).
+
+        Raises :class:`AqaraU200OperationError` if the lock didn't answer.
+        """
+        await self._async_send_write(build_set_auxiliary_locking_on_close_enabled())
+
+    async def async_enable_auxiliary_locking_relock(self) -> None:
+        """Enable 'Re-bloqueo de seguridad' over BLE (0xc4, byte-confirmed).
+
+        Raises :class:`AqaraU200OperationError` if the lock didn't answer.
+        """
+        await self._async_send_write(build_set_auxiliary_locking_relock_enabled())
 
     async def _async_send_write(self, write: LockOperationWrite) -> None:
         """Open one session, send a confirmed SET frame, and require an ACK.
