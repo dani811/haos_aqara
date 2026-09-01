@@ -371,6 +371,135 @@ async def test_set_alarm_volume_calls_the_client_then_shows_the_reread_value(has
     assert coordinator.data.alarm_volume == "00"
 
 
+class TimerActionClient(FullReadClient):
+    """A client recording calls to the set-only timer/enable SET operations.
+
+    These have no confirmed read-side decoder yet (see number.py/button.py),
+    so unlike ``SettableClient`` there is nothing for a re-read to reveal —
+    these tests only prove the coordinator calls through and propagates a
+    failed write, matching what's actually observable for this group.
+    """
+
+    def __init__(self) -> None:
+        self.alert_delay_calls: list[int] = []
+        self.verify_fail_time_calls: list[int] = []
+        self.auto_lockup_relock_calls: list[int] = []
+        self.auto_lock_on_close_calls: list[int] = []
+        self.enable_on_close_calls = 0
+        self.enable_relock_calls = 0
+
+    async def async_set_alert_delay(self, seconds: int) -> None:
+        self.alert_delay_calls.append(seconds)
+
+    async def async_set_verify_fail_time(self, seconds: int) -> None:
+        self.verify_fail_time_calls.append(seconds)
+
+    async def async_set_auto_lockup_relock_delay(self, seconds: int) -> None:
+        self.auto_lockup_relock_calls.append(seconds)
+
+    async def async_set_auto_lock_on_close_delay(self, seconds: int) -> None:
+        self.auto_lock_on_close_calls.append(seconds)
+
+    async def async_enable_auxiliary_locking_on_close(self) -> None:
+        self.enable_on_close_calls += 1
+
+    async def async_enable_auxiliary_locking_relock(self) -> None:
+        self.enable_relock_calls += 1
+
+
+async def test_set_alert_delay_calls_the_client(hass) -> None:
+    """A SET flows through to the client with the requested seconds."""
+    client = TimerActionClient()
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+
+    await coordinator.async_set_alert_delay(10)
+
+    assert client.alert_delay_calls == [10]
+    assert coordinator.data.last_operation == "set_alert_delay"
+
+
+async def test_set_verify_fail_time_calls_the_client(hass) -> None:
+    """A SET flows through to the client with the requested seconds."""
+    client = TimerActionClient()
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+
+    await coordinator.async_set_verify_fail_time(120)
+
+    assert client.verify_fail_time_calls == [120]
+
+
+async def test_set_auto_lockup_relock_delay_calls_the_client(hass) -> None:
+    """A SET flows through to the client with the requested seconds."""
+    client = TimerActionClient()
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+
+    await coordinator.async_set_auto_lockup_relock_delay(10)
+
+    assert client.auto_lockup_relock_calls == [10]
+
+
+async def test_set_auto_lock_on_close_delay_calls_the_client(hass) -> None:
+    """A SET flows through to the client with the requested seconds."""
+    client = TimerActionClient()
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+
+    await coordinator.async_set_auto_lock_on_close_delay(5)
+
+    assert client.auto_lock_on_close_calls == [5]
+
+
+async def test_enable_auxiliary_locking_on_close_calls_the_client(hass) -> None:
+    """The one-way enable action flows through to the client."""
+    client = TimerActionClient()
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+
+    await coordinator.async_enable_auxiliary_locking_on_close()
+
+    assert client.enable_on_close_calls == 1
+
+
+async def test_enable_auxiliary_locking_relock_calls_the_client(hass) -> None:
+    """The one-way enable action flows through to the client."""
+    client = TimerActionClient()
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+
+    await coordinator.async_enable_auxiliary_locking_relock()
+
+    assert client.enable_relock_calls == 1
+
+
+async def test_set_alert_delay_propagates_a_failed_write(hass) -> None:
+    """A SET that the lock never acknowledges must surface as a real error."""
+
+    class FailingClient(TimerActionClient):
+        async def async_set_alert_delay(self, seconds: int) -> None:
+            raise AqaraU200OperationError("Aqara U200 did not acknowledge set:0x18:...")
+
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), FailingClient())
+
+    with pytest.raises(AqaraU200OperationError):
+        await coordinator.async_set_alert_delay(10)
+
+    assert coordinator.operation_in_progress is False
+    assert coordinator.data.last_error_type == "AqaraU200OperationError"
+
+
+async def test_enable_auxiliary_locking_on_close_propagates_a_failed_write(hass) -> None:
+    """A SET that the lock never acknowledges must surface as a real error."""
+
+    class FailingClient(TimerActionClient):
+        async def async_enable_auxiliary_locking_on_close(self) -> None:
+            raise AqaraU200OperationError("Aqara U200 did not acknowledge set:0xc4:...")
+
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), FailingClient())
+
+    with pytest.raises(AqaraU200OperationError):
+        await coordinator.async_enable_auxiliary_locking_on_close()
+
+    assert coordinator.operation_in_progress is False
+    assert coordinator.data.last_error_type == "AqaraU200OperationError"
+
+
 async def test_set_alert_volume_propagates_a_failed_write(hass) -> None:
     """A SET that the lock never acknowledges must surface as a real error."""
 

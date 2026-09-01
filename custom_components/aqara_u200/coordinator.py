@@ -442,6 +442,52 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             "set_alarm_volume", lambda: self.client.async_set_alarm_volume(silent=silent)
         )
 
+    async def async_set_alert_delay(self, seconds: int) -> None:
+        """Serialize an open-door alarm-delay SET ('Retraso de alerta')."""
+        await self._async_run_set_operation(
+            "set_alert_delay", lambda: self.client.async_set_alert_delay(seconds)
+        )
+
+    async def async_set_verify_fail_time(self, seconds: int) -> None:
+        """Serialize a keypad-lockout-duration SET ('Bloqueo de verificación')."""
+        await self._async_run_set_operation(
+            "set_verify_fail_time", lambda: self.client.async_set_verify_fail_time(seconds)
+        )
+
+    async def async_set_auto_lockup_relock_delay(self, seconds: int) -> None:
+        """Serialize a 'Re-bloqueo de seguridad' delay SET."""
+        await self._async_run_set_operation(
+            "set_auto_lockup_relock_delay",
+            lambda: self.client.async_set_auto_lockup_relock_delay(seconds),
+        )
+
+    async def async_set_auto_lock_on_close_delay(self, seconds: int) -> None:
+        """Serialize a 'Bloqueo automático al cerrar' delay SET."""
+        await self._async_run_set_operation(
+            "set_auto_lock_on_close_delay",
+            lambda: self.client.async_set_auto_lock_on_close_delay(seconds),
+        )
+
+    async def async_enable_auxiliary_locking_on_close(self) -> None:
+        """Serialize enabling 'Bloqueo automático al cerrar'.
+
+        One-directional: no confirmed disable frame exists yet (see client.py).
+        """
+        await self._async_run_set_operation(
+            "enable_auxiliary_locking_on_close",
+            lambda: self.client.async_enable_auxiliary_locking_on_close(),
+        )
+
+    async def async_enable_auxiliary_locking_relock(self) -> None:
+        """Serialize enabling 'Re-bloqueo de seguridad'.
+
+        One-directional: no confirmed disable frame exists yet (see client.py).
+        """
+        await self._async_run_set_operation(
+            "enable_auxiliary_locking_relock",
+            lambda: self.client.async_enable_auxiliary_locking_relock(),
+        )
+
     async def _async_run_set_operation(
         self, operation: str, action: Callable[[], Awaitable[None]]
     ) -> None:

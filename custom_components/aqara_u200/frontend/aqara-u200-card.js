@@ -44,7 +44,22 @@ function _rssiSeverity(stateObj) {
   return null;
 }
 
+// Disconnected is worth flagging at a glance (it means every other badge on
+// this card is a stale last-known value, not a live reading) — connected is
+// just the normal, unremarkable state.
+function _connectivitySeverity(stateObj) {
+  return stateObj.state === "on" ? null : "warn";
+}
+
 const BADGE_DEFS = [
+  {
+    key: "connectivity",
+    domain: "binary_sensor",
+    icon: "mdi:bluetooth-connect",
+    side: "left",
+    severity: _connectivitySeverity,
+    labels: { on: "Conectado", off: "Desconectado" },
+  },
   { key: "battery", domain: "sensor", icon: "mdi:battery", suffix: "%", side: "left", severity: _batterySeverity },
   { key: "rssi", domain: "sensor", icon: "mdi:bluetooth", suffix: " dBm", side: "left", severity: _rssiSeverity },
   { key: "door_type", domain: "sensor", icon: "mdi:door", side: "left" },
@@ -310,9 +325,18 @@ class AqaraU200Card extends HTMLElement {
       return "–"; // en dash — "not read yet", never a guessed value
     }
     if (def.domain === "binary_sensor") {
+      if (def.labels) return stateObj.state === "on" ? def.labels.on : def.labels.off;
       return stateObj.state === "on" ? "On" : "Off";
     }
     const suffix = def.suffix || "";
+    // `select` options are raw internal values ("medium", "silent"…) — the
+    // Spanish label ("Medio") lives in translations/es.json and HA already
+    // knows how to resolve it (it's the same lookup the more-info dialog
+    // uses). Confirmed live 2026-09-01: without this, the badge showed the
+    // untranslated English option verbatim next to fully-Spanish badges.
+    if (def.domain === "select" && typeof this._hass.formatEntityState === "function") {
+      return `${this._hass.formatEntityState(stateObj)}${suffix}`;
+    }
     return `${stateObj.state}${suffix}`;
   }
 

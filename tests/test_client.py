@@ -263,6 +263,150 @@ async def test_async_set_alarm_volume_sends_the_confirmed_frame() -> None:
     protocol_client.read_burst.assert_awaited_once_with(["01:83020007"])
 
 
+async def test_async_set_alert_delay_sends_the_confirmed_frame() -> None:
+    """async_set_alert_delay() sends the byte-confirmed 0x18 SET frame via read_burst."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        read_burst=AsyncMock(return_value=[("18050a030a88d5", "18000c")])
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        await _adapter(manager).async_set_alert_delay(10)
+
+    protocol_client.read_burst.assert_awaited_once_with(["01:18050a030a88d5"])
+
+
+async def test_async_set_verify_fail_time_sends_the_confirmed_frame() -> None:
+    """async_set_verify_fail_time() sends the byte-confirmed 0xaf SET frame via read_burst."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        read_burst=AsyncMock(return_value=[("af780000000c4a", "af000c")])
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        await _adapter(manager).async_set_verify_fail_time(120)
+
+    protocol_client.read_burst.assert_awaited_once_with(["01:af780000000c4a"])
+
+
+async def test_async_set_auto_lockup_relock_delay_sends_the_confirmed_frame() -> None:
+    """async_set_auto_lockup_relock_delay() sends the byte-confirmed 0xd5 SET frame."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        read_burst=AsyncMock(return_value=[("d50a000efe", "d5000c")])
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        await _adapter(manager).async_set_auto_lockup_relock_delay(10)
+
+    protocol_client.read_burst.assert_awaited_once_with(["01:d50a000efe"])
+
+
+async def test_async_set_auto_lock_on_close_delay_sends_the_confirmed_frame() -> None:
+    """async_set_auto_lock_on_close_delay() sends the byte-confirmed 0xd5 SET frame."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        read_burst=AsyncMock(return_value=[("d5050001fe", "d5000c")])
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        await _adapter(manager).async_set_auto_lock_on_close_delay(5)
+
+    protocol_client.read_burst.assert_awaited_once_with(["01:d5050001fe"])
+
+
+async def test_async_enable_auxiliary_locking_on_close_sends_the_confirmed_frame() -> None:
+    """async_enable_auxiliary_locking_on_close() sends the byte-confirmed 0xc4 SET frame."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        read_burst=AsyncMock(return_value=[("c402000698", "c4000c")])
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        await _adapter(manager).async_enable_auxiliary_locking_on_close()
+
+    protocol_client.read_burst.assert_awaited_once_with(["01:c402000698"])
+
+
+async def test_async_enable_auxiliary_locking_relock_sends_the_confirmed_frame() -> None:
+    """async_enable_auxiliary_locking_relock() sends the byte-confirmed 0xc4 SET frame."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        read_burst=AsyncMock(return_value=[("c404000098", "c4000c")])
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        await _adapter(manager).async_enable_auxiliary_locking_relock()
+
+    protocol_client.read_burst.assert_awaited_once_with(["01:c404000098"])
+
+
 async def test_async_set_alert_volume_raises_when_the_lock_never_answers() -> None:
     """A SET write with no ACK is a real failure, not a silent no-op."""
     manager = Mock()

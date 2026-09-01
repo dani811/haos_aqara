@@ -62,7 +62,9 @@
       "language": { "name": "Language" }
     },
     "button": {
-      "refresh": { "name": "Refresh over Bluetooth" }
+      "refresh": { "name": "Refresh over Bluetooth" },
+      "enable_auxiliary_locking_on_close": { "name": "Enable auto-lock on door close" },
+      "enable_auxiliary_locking_relock": { "name": "Enable security re-lock" }
     },
     "select": {
       "alert_volume": {
@@ -73,6 +75,12 @@
         "name": "Alarm (siren) volume",
         "state": { "normal": "Normal", "silent": "Silent" }
       }
+    },
+    "number": {
+      "alert_delay": { "name": "Open-door alarm delay" },
+      "verify_fail_time": { "name": "Keypad lockout duration" },
+      "auto_lockup_relock_delay": { "name": "Security re-lock delay" },
+      "auto_lock_on_close_delay": { "name": "Auto-lock on close delay" }
     }
   },
   "options": {
