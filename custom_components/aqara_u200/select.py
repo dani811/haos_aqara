@@ -19,7 +19,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import AqaraU200ConfigEntry
-from .const import DOMAIN
+from .const import DOMAIN, LANGUAGE_OPTIONS
 from .coordinator import AqaraU200Coordinator
 from .exceptions import AqaraU200Error
 
@@ -47,6 +47,7 @@ async def async_setup_entry(
         [
             AqaraU200AlertVolumeSelect(entry, coordinator),
             AqaraU200AlarmVolumeSelect(entry, coordinator),
+            AqaraU200LanguageSelect(entry, coordinator),
         ]
     )
 
@@ -122,3 +123,37 @@ class AqaraU200AlarmVolumeSelect(_AqaraU200SelectBase):
             )
         except AqaraU200Error as err:
             raise HomeAssistantError(str(err)) from err
+
+
+class AqaraU200LanguageSelect(_AqaraU200SelectBase):
+    """Spoken-prompt language — changed via the cloud voice-pack OTA.
+
+    Selecting a language starts a ~10-minute OTA that the lock gates behind a
+    physical keypad press (the coordinator fires an event + notification so a
+    fingerbot automation can authorise it). It runs in the background, so the
+    UI call returns at once; the shown value updates when the new language is
+    read back after the transfer. Only 'es' reads back today (the library's
+    decoder), so a just-changed non-Spanish language may show blank until its
+    read-side code is added — the change itself still applies.
+    """
+
+    _attr_translation_key = "language"
+    _attr_options = list(LANGUAGE_OPTIONS)
+
+    def __init__(self, entry: AqaraU200ConfigEntry, coordinator: AqaraU200Coordinator) -> None:
+        """Initialize the language select."""
+        super().__init__(entry, coordinator, "language")
+
+    @property
+    def current_option(self) -> str | None:
+        """Return the read-back language code, or None until read / if unknown."""
+        value = self.coordinator.data.language
+        return value if value in self._attr_options else None
+
+    async def async_select_option(self, option: str) -> None:
+        """Start the language-change OTA in the background (does not block the UI)."""
+        self.coordinator.config_entry.async_create_background_task(
+            self.coordinator.hass,
+            self.coordinator.async_change_language(option),
+            f"{DOMAIN}_change_language",
+        )

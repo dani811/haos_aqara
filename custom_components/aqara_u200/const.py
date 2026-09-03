@@ -50,6 +50,23 @@ BLE_READ_GAP_SECONDS = 8.0
 #: times out and returns None). Retry each read up to this many times.
 BLE_READ_ATTEMPTS = 3
 
+#: Language voice-pack change (feature 002-language-ota). Changing the spoken
+#: language is a cloud voice-pack OTA the lock gates behind a physical keypad
+#: press within a short window after it starts. That press is EXTERNAL (a
+#: fingerbot, a person) — the library cannot make it — so the coordinator fires
+#: this event on the HA bus when the OTA begins; a fingerbot automation (see the
+#: bundled blueprint) presses the keypad during the window.
+EVENT_KEYPAD_PRESS_REQUIRED = f"{DOMAIN}_keypad_press_required"
+#: How long the lock holds the OTA manifest open waiting for the keypad press
+#: (matches aqara_ble's default ``manifest_wait_s``). Shown in the notification.
+LANGUAGE_PRESENCE_WINDOW_SECONDS = 90
+#: Languages exposed as select options. Lowercase, matching the read side
+#: (``aqara_ble.decode_language`` returns e.g. 'es'); passed to the library's
+#: ``change_language`` as-is (its ``select_voice_pack`` matches the pack file's
+#: ``_ES_`` code case-insensitively). Only 'es' is confirmed on the read side
+#: today; the others still change correctly, they just read back as unknown.
+LANGUAGE_OPTIONS = ("es", "en", "fr", "de", "it", "pt")
+
 DEFAULT_REGION = "EU"
 SUPPORTED_REGIONS = ("EU", "US", "CN")
 

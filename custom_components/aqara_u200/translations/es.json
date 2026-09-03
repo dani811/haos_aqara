@@ -74,6 +74,10 @@
       "alarm_volume": {
         "name": "Volumen de alarma",
         "state": { "normal": "Normal", "silent": "Silencio" }
+      },
+      "language": {
+        "name": "Idioma",
+        "state": { "es": "Español", "en": "Inglés", "fr": "Francés", "de": "Alemán", "it": "Italiano", "pt": "Portugués" }
       }
     },
     "number": {
