@@ -1,0 +1,67 @@
+blueprint:
+  name: Aqara U200 — pulsar el teclado al cambiar de idioma
+  description: >
+    Cuando el Aqara U200 inicia un cambio de idioma (OTA), pulsa el
+    pulsador/fingerbot montado sobre el teclado para autorizar el cambio dentro
+    de la ventana de presencia de la cerradura. Un solo pulso en la ventana
+    autoriza toda la transferencia (~10 min); no hace falta pulsar por bloque.
+
+    El cambio de idioma es un OTA que la cerradura solo confirma mientras el
+    teclado reporta presencia. La integración emite el evento
+    `aqara_u200_keypad_press_required` al empezar; esta automatización responde
+    dando el pulso. El retardo inicial deja que el handshake del OTA llegue a la
+    fase del manifiesto (conexión + auth) antes de pulsar, para que la presencia
+    caiga dentro de la ventana y no antes.
+  domain: automation
+  author: haos_aqara
+  input:
+    keypad_switch:
+      name: Pulsador del teclado
+      description: El switch (p. ej. un fingerbot Aqara sobre el teclado) que da el pulso.
+      selector:
+        entity:
+          filter:
+            domain: switch
+    startup_delay:
+      name: Retardo antes de pulsar
+      description: >
+        Segundos a esperar tras iniciarse el OTA, para que llegue a la fase de
+        presencia antes del pulso. Súbelo si el pulso cae demasiado pronto.
+      default: 5
+      selector:
+        number:
+          min: 0
+          max: 30
+          step: 1
+          unit_of_measurement: s
+          mode: slider
+    press_duration:
+      name: Duración del pulso
+      description: Cuánto mantener el pulsador activado.
+      default: 1
+      selector:
+        number:
+          min: 0.2
+          max: 5
+          step: 0.1
+          unit_of_measurement: s
+          mode: slider
+
+mode: single
+max_exceeded: silent
+
+triggers:
+  - trigger: event
+    event_type: aqara_u200_keypad_press_required
+
+actions:
+  - delay:
+      seconds: !input startup_delay
+  - action: switch.turn_on
+    target:
+      entity_id: !input keypad_switch
+  - delay:
+      seconds: !input press_duration
+  - action: switch.turn_off
+    target:
+      entity_id: !input keypad_switch

@@ -12,7 +12,7 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.aqara_u200.bluetooth import AqaraU200BluetoothState
 from custom_components.aqara_u200.client import LockSettings
-from custom_components.aqara_u200.const import DOMAIN
+from custom_components.aqara_u200.const import DOMAIN, EVENT_KEYPAD_PRESS_REQUIRED
 from custom_components.aqara_u200.coordinator import AqaraU200Coordinator
 from custom_components.aqara_u200.exceptions import (
     AqaraU200AuthenticationError,
@@ -369,6 +369,51 @@ async def test_set_alarm_volume_calls_the_client_then_shows_the_reread_value(has
 
     assert client.set_alarm_volume_calls == [True]
     assert coordinator.data.alarm_volume == "00"
+
+
+class LanguageClient(FullReadClient):
+    """A client whose language-change 'OTA' mutates what the next read returns.
+
+    Stands in for the real ~10-minute voice-pack OTA: records the requested
+    language and, like the lock, reports it on the following settings read, so
+    the test can prove the coordinator re-reads instead of guessing.
+    """
+
+    def __init__(self) -> None:
+        self.language = "es"
+        self.change_language_calls: list[str] = []
+
+    async def async_read_settings(self) -> LockSettings:
+        return LockSettings(
+            system_volume=5,
+            language=self.language,
+            alert_volume="high",
+            alarm_volume="10",
+        )
+
+    async def async_change_language(self, language: str) -> None:
+        self.change_language_calls.append(language)
+        self.language = language
+
+
+async def test_change_language_fires_keypad_event_then_shows_reread_value(hass) -> None:
+    """A language change announces the keypad press, calls the client, re-reads."""
+    events = async_capture_events(hass, EVENT_KEYPAD_PRESS_REQUIRED)
+    client = LanguageClient()
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+
+    await coordinator.async_change_language("en")
+
+    # The external keypad press is announced on the bus BEFORE the transfer, so a
+    # fingerbot automation can authorise it inside the lock's presence window.
+    assert len(events) == 1
+    assert events[0].data["language"] == "en"
+    assert "window_seconds" in events[0].data
+    # The change flows to the client and the shown value is a fresh re-read.
+    assert client.change_language_calls == ["en"]
+    assert coordinator.data.language == "en"
+    assert coordinator.operation_in_progress is False
+    assert coordinator.data.last_operation == "change_language:en"
 
 
 class TimerActionClient(FullReadClient):

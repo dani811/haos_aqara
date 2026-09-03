@@ -74,6 +74,10 @@
       "alarm_volume": {
         "name": "Alarm (siren) volume",
         "state": { "normal": "Normal", "silent": "Silent" }
+      },
+      "language": {
+        "name": "Language",
+        "state": { "es": "Spanish", "en": "English", "fr": "French", "de": "German", "it": "Italian", "pt": "Portuguese" }
       }
     },
     "number": {

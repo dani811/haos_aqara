@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 
+from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -20,6 +21,8 @@ from .const import (
     CONF_POLL_HOURS,
     DEFAULT_POLL_HOURS,
     DOMAIN,
+    EVENT_KEYPAD_PRESS_REQUIRED,
+    LANGUAGE_PRESENCE_WINDOW_SECONDS,
     REALTIME_GAP_SECONDS,
     REALTIME_SESSION_SECONDS,
     REFRESH_GAP_SECONDS,
@@ -487,6 +490,48 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             "enable_auxiliary_locking_relock",
             lambda: self.client.async_enable_auxiliary_locking_relock(),
         )
+
+    async def async_change_language(self, language: str) -> None:
+        """Change the lock's spoken-prompt language (cloud voice-pack OTA, ~10 min).
+
+        The lock only ACKs a language change while the keypad reports presence
+        within a short window after the OTA manifest opens. That press is
+        external and physical — neither this integration nor the library can
+        make it — so we announce the transfer on the HA bus
+        (``aqara_u200_keypad_press_required``) and raise a persistent
+        notification BEFORE starting: a fingerbot automation (see the bundled
+        blueprint) presses the keypad during the window, and a person can press
+        it by hand as the fallback. A single press anywhere in the window
+        authorises the whole transfer. The re-read afterwards updates the shown
+        language once the new pack is applied.
+        """
+        notification_id = f"{DOMAIN}_keypad_{self._entry.entry_id}"
+        self.hass.bus.async_fire(
+            EVENT_KEYPAD_PRESS_REQUIRED,
+            {
+                "entry_id": self._entry.entry_id,
+                "language": language,
+                "window_seconds": LANGUAGE_PRESENCE_WINDOW_SECONDS,
+            },
+        )
+        persistent_notification.async_create(
+            self.hass,
+            (
+                f"Cambiando el idioma del Aqara U200 a «{language}». Pulsa el "
+                f"teclado en los próximos {LANGUAGE_PRESENCE_WINDOW_SECONDS} s "
+                "para autorizar el cambio (o deja que lo haga tu automatización "
+                "del pulsador). La transferencia tarda unos 10 minutos."
+            ),
+            title="Aqara U200 — pulsa el teclado",
+            notification_id=notification_id,
+        )
+        try:
+            await self._async_run_set_operation(
+                f"change_language:{language}",
+                lambda: self.client.async_change_language(language),
+            )
+        finally:
+            persistent_notification.async_dismiss(self.hass, notification_id)
 
     async def _async_run_set_operation(
         self, operation: str, action: Callable[[], Awaitable[None]]

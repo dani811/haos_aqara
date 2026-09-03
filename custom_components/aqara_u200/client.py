@@ -186,6 +186,15 @@ class AqaraU200Client(Protocol):
         """
         ...
 
+    async def async_change_language(self, language: str) -> None:
+        """Change the spoken-prompt language via the cloud voice-pack OTA (long).
+
+        Requires a physical keypad-presence press during the transfer; the
+        coordinator arranges the press (event + notification). Raises if the OTA
+        is not acknowledged.
+        """
+        ...
+
 
 def build_cloud_auth(config: Mapping[str, Any]) -> CloudAuthManager:
     """Build library-owned cloud auth from Home Assistant config-entry data.
@@ -546,6 +555,73 @@ class AqaraU200BleClientAdapter:
         response = await self._async_one_read(_writer)
         if response is None:
             raise AqaraU200OperationError(f"Aqara U200 did not acknowledge {write.operation}")
+
+    async def async_change_language(self, language: str) -> None:
+        """Change the lock's spoken-prompt language via the cloud voice-pack OTA.
+
+        Long-running (~10 min): opens one BLE session, looks the pack up in the
+        cloud voice list, downloads it from the CDN, and streams it FROM SCRATCH
+        (``aqara_ble.U200Client.change_language``). The lock gates the change
+        behind a keypad-presence press within a short window after the manifest
+        opens; making that press happen is the coordinator's job (it fires an HA
+        event + notification so a fingerbot automation presses the keypad). This
+        boundary just runs the transfer and normalizes errors. Raises
+        :class:`AqaraU200OperationError` if the OTA is not acknowledged.
+        """
+        ble_device = self._bluetooth_manager.async_get_ble_device()
+        if ble_device is None:
+            raise AqaraU200BluetoothUnavailableError(
+                "Aqara U200 is not reachable through Home Assistant Bluetooth"
+            )
+
+        bleak_client: BleakClientWithServiceCache | None = None
+        started = False
+        try:
+            bleak_client = await establish_connection(
+                BleakClientWithServiceCache,
+                ble_device,
+                _CONNECTION_NAME,
+                ble_device_callback=lambda: (
+                    self._bluetooth_manager.async_get_ble_device() or ble_device
+                ),
+            )
+            protocol_client = ProtocolU200Client.from_gatt(
+                auth=self._auth,
+                gatt_client=bleak_client,
+                device_id=self._device_id,
+                region=self._region,
+            )
+            started = True
+            await protocol_client.change_language(language)
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:
+            if is_invalid_auth_error(err) or (
+                isinstance(err, U200ClientError) and err.phase is FlowPhase.LOGIN
+            ):
+                raise AqaraU200AuthenticationError(
+                    "Aqara rejected the configured credentials"
+                ) from err
+            if not started and isinstance(
+                err, (BleakConnectionError, BleakError, TimeoutError)
+            ):
+                raise AqaraU200BluetoothUnavailableError(
+                    "Could not connect to Aqara U200 through Home Assistant Bluetooth"
+                ) from err
+            raise AqaraU200OperationError(
+                f"Aqara U200 language change to {language} failed"
+            ) from err
+        finally:
+            if bleak_client is not None:
+                try:
+                    async with asyncio.timeout(_DISCONNECT_TIMEOUT):
+                        await bleak_client.disconnect()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as err:  # noqa: BLE001 - best-effort disconnect
+                    _LOGGER.debug(
+                        "Aqara U200 BLE disconnect failed (%s)", type(err).__name__
+                    )
 
     async def _async_operate(
         self, operation: str, *, listen_after: float = _STATE_LISTEN_SECONDS
