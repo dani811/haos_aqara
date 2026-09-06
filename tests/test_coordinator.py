@@ -4,7 +4,7 @@ import asyncio
 from unittest.mock import patch
 
 import pytest
-from aqara_ble import LockEvent
+from aqara_ble import LockEvent, UserCredential
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_capture_events,
@@ -206,6 +206,13 @@ class FullReadClient:
             alarm_volume="10",
         )
 
+    async def async_read_user_table(self) -> list[UserCredential] | None:
+        return [
+            UserCredential(1, 2, "password", 1, 1_700_000_100, "aa"),
+            UserCredential(2, 2, "password", 2, 1_700_000_200, "bb"),
+            UserCredential(3, 1, "fingerprint", 1, 1_700_000_300, "cc"),
+        ]
+
 
 async def test_initial_sync_reads_everything_on_setup(hass) -> None:
     """async_start_initial_sync must populate every value without user action.
@@ -232,6 +239,8 @@ async def test_initial_sync_reads_everything_on_setup(hass) -> None:
     assert coordinator.data.language == "es"
     assert coordinator.data.alert_volume == "high"
     assert coordinator.data.alarm_volume == "10"
+    assert coordinator.data.credential_count == 3
+    assert dict(coordinator.data.credentials_by_type) == {"fingerprint": 1, "password": 2}
 
 
 class FlakyConfigReadClient(FullReadClient):

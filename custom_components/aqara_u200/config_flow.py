@@ -33,9 +33,11 @@ from .client import (
 from .const import (
     CONF_ACCOUNT,
     CONF_DEVICE_ID,
+    CONF_OFFLINE_MODE,
     CONF_POLL_HOURS,
     CONF_REALTIME_STATE,
     CONF_REGION,
+    DEFAULT_OFFLINE_MODE,
     DEFAULT_POLL_HOURS,
     DEFAULT_REALTIME_STATE,
     DEFAULT_REGION,
@@ -287,6 +289,7 @@ class AqaraU200OptionsFlow(OptionsFlow):
         options = self.config_entry.options
         realtime = options.get(CONF_REALTIME_STATE, DEFAULT_REALTIME_STATE)
         poll_hours = options.get(CONF_POLL_HOURS, DEFAULT_POLL_HOURS)
+        offline = options.get(CONF_OFFLINE_MODE, DEFAULT_OFFLINE_MODE)
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -301,6 +304,7 @@ class AqaraU200OptionsFlow(OptionsFlow):
                             mode=NumberSelectorMode.BOX,
                         )
                     ),
+                    vol.Required(CONF_OFFLINE_MODE, default=offline): bool,
                 }
             ),
         )

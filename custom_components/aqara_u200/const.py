@@ -12,6 +12,15 @@ CONF_REGION = "region"
 # including external changes (Matter/key/keypad). Costs extra lock battery.
 CONF_REALTIME_STATE = "realtime_state"
 DEFAULT_REALTIME_STATE = False
+
+# Opt-in: offline (cloud-cut) BLE session. When on, the LTMK is fetched from the
+# cloud ONCE at startup (aqara_ble.CloudAuthManager.fetch_ltmk) and kept only in
+# memory; BLE operations then derive their session locally and no longer make a
+# per-operation cloud call. The master key is never persisted to disk — after a
+# restart it is fetched again once. Falls back to the cloud path if the fetch
+# fails, so enabling it can never break control.
+CONF_OFFLINE_MODE = "offline_mode"
+DEFAULT_OFFLINE_MODE = False
 #: Background BLE poll interval, in hours. 0 = OFF (on-demand only, via the
 #: Refresh button / real-time listener / operations). Configurable so a
 #: battery-conscious user leaves it off and others can refresh periodically.
