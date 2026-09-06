@@ -1,0 +1,28 @@
+add_visitor_password:
+  name: Add visitor password
+  description: >-
+    Enrol a visitor PIN on the Aqara U200 over Bluetooth (offline-capable). The
+    front keypad panel must be awake. The lock never stores or returns the PIN
+    in plaintext afterwards.
+  target:
+    entity:
+      integration: aqara_u200
+      domain: lock
+  fields:
+    pin:
+      name: PIN
+      description: The visitor PIN — an even number of decimal digits (e.g. 6 or 8).
+      required: true
+      example: "730492"
+      selector:
+        text:
+    group_id:
+      name: Group
+      description: Credential group id (advanced; leave at 1 unless you know otherwise).
+      required: false
+      default: 1
+      selector:
+        number:
+          min: 0
+          max: 255
+          mode: box

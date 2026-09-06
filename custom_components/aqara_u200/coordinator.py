@@ -564,6 +564,17 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         finally:
             persistent_notification.async_dismiss(self.hass, notification_id)
 
+    async def async_add_visitor_password(self, pin: str, group_id: int = 1) -> None:
+        """Serialize a visitor-password enrol over BLE (offline-capable).
+
+        Reuses the settings-write path (serialize + re-read); the credential
+        table refreshes on the next read. The front panel must be awake.
+        """
+        await self._async_run_set_operation(
+            f"add_visitor_password:group{group_id}",
+            lambda: self.client.async_add_visitor_password(pin, group_id),
+        )
+
     async def _async_run_set_operation(
         self, operation: str, action: Callable[[], Awaitable[None]]
     ) -> None:

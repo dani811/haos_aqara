@@ -46,46 +46,97 @@
   },
   "entity": {
     "binary_sensor": {
-      "connectivity": { "name": "Connectivity" },
-      "assist_turn": { "name": "Turn assist" },
-      "pull_spring": { "name": "Pull-spring function" }
+      "connectivity": {
+        "name": "Connectivity"
+      },
+      "assist_turn": {
+        "name": "Turn assist"
+      },
+      "pull_spring": {
+        "name": "Pull-spring function"
+      }
     },
     "sensor": {
-      "battery": { "name": "Battery" },
-      "rssi": { "name": "Signal strength" },
+      "battery": {
+        "name": "Battery"
+      },
+      "rssi": {
+        "name": "Signal strength"
+      },
       "door_type": {
         "name": "Door lock type",
-        "state": { "eu": "EU", "uk": "UK", "us": "US" }
+        "state": {
+          "eu": "EU",
+          "uk": "UK",
+          "us": "US"
+        }
       },
-      "pull_spring_retraction": { "name": "Pull-spring retraction" },
-      "system_volume": { "name": "System volume" },
-      "language": { "name": "Language" },
-      "credentials": { "name": "Credentials" }
+      "pull_spring_retraction": {
+        "name": "Pull-spring retraction"
+      },
+      "system_volume": {
+        "name": "System volume"
+      },
+      "language": {
+        "name": "Language"
+      },
+      "credentials": {
+        "name": "Credentials"
+      }
     },
     "button": {
-      "refresh": { "name": "Refresh over Bluetooth" },
-      "enable_auxiliary_locking_on_close": { "name": "Enable auto-lock on door close" },
-      "enable_auxiliary_locking_relock": { "name": "Enable security re-lock" }
+      "refresh": {
+        "name": "Refresh over Bluetooth"
+      },
+      "enable_auxiliary_locking_on_close": {
+        "name": "Enable auto-lock on door close"
+      },
+      "enable_auxiliary_locking_relock": {
+        "name": "Enable security re-lock"
+      }
     },
     "select": {
       "alert_volume": {
         "name": "Alert volume",
-        "state": { "high": "High", "medium": "Medium", "low": "Low", "silent": "Silent" }
+        "state": {
+          "high": "High",
+          "medium": "Medium",
+          "low": "Low",
+          "silent": "Silent"
+        }
       },
       "alarm_volume": {
         "name": "Alarm (siren) volume",
-        "state": { "normal": "Normal", "silent": "Silent" }
+        "state": {
+          "normal": "Normal",
+          "silent": "Silent"
+        }
       },
       "language": {
         "name": "Language",
-        "state": { "es": "Spanish", "en": "English", "fr": "French", "de": "German", "it": "Italian", "pt": "Portuguese" }
+        "state": {
+          "es": "Spanish",
+          "en": "English",
+          "fr": "French",
+          "de": "German",
+          "it": "Italian",
+          "pt": "Portuguese"
+        }
       }
     },
     "number": {
-      "alert_delay": { "name": "Open-door alarm delay" },
-      "verify_fail_time": { "name": "Keypad lockout duration" },
-      "auto_lockup_relock_delay": { "name": "Security re-lock delay" },
-      "auto_lock_on_close_delay": { "name": "Auto-lock on close delay" }
+      "alert_delay": {
+        "name": "Open-door alarm delay"
+      },
+      "verify_fail_time": {
+        "name": "Keypad lockout duration"
+      },
+      "auto_lockup_relock_delay": {
+        "name": "Security re-lock delay"
+      },
+      "auto_lock_on_close_delay": {
+        "name": "Auto-lock on close delay"
+      }
     }
   },
   "options": {
@@ -97,6 +148,22 @@
           "realtime_state": "Real-time BLE state (push events; one held connection)",
           "poll_hours": "Background poll every N hours (0 = off / on-demand)",
           "offline_mode": "Offline mode (cloud-cut Bluetooth after startup)"
+        }
+      }
+    }
+  },
+  "services": {
+    "add_visitor_password": {
+      "name": "Add visitor password",
+      "description": "Enrol a visitor PIN on the Aqara U200 over Bluetooth (offline-capable). The front keypad panel must be awake.",
+      "fields": {
+        "pin": {
+          "name": "PIN",
+          "description": "The visitor PIN — an even number of decimal digits (e.g. 6 or 8)."
+        },
+        "group_id": {
+          "name": "Group",
+          "description": "Credential group id (advanced; leave at 1)."
         }
       }
     }

@@ -46,46 +46,97 @@
   },
   "entity": {
     "binary_sensor": {
-      "connectivity": { "name": "Conectividad" },
-      "assist_turn": { "name": "Asistencia de giro" },
-      "pull_spring": { "name": "Resorte de tracción" }
+      "connectivity": {
+        "name": "Conectividad"
+      },
+      "assist_turn": {
+        "name": "Asistencia de giro"
+      },
+      "pull_spring": {
+        "name": "Resorte de tracción"
+      }
     },
     "sensor": {
-      "battery": { "name": "Batería" },
-      "rssi": { "name": "Intensidad de señal" },
+      "battery": {
+        "name": "Batería"
+      },
+      "rssi": {
+        "name": "Intensidad de señal"
+      },
       "door_type": {
         "name": "Tipo de cerradura de puerta",
-        "state": { "eu": "UE", "uk": "Reino Unido", "us": "EE. UU." }
+        "state": {
+          "eu": "UE",
+          "uk": "Reino Unido",
+          "us": "EE. UU."
+        }
       },
-      "pull_spring_retraction": { "name": "Retracción del resorte" },
-      "system_volume": { "name": "Volumen del sistema" },
-      "language": { "name": "Idioma" },
-      "credentials": { "name": "Credenciales" }
+      "pull_spring_retraction": {
+        "name": "Retracción del resorte"
+      },
+      "system_volume": {
+        "name": "Volumen del sistema"
+      },
+      "language": {
+        "name": "Idioma"
+      },
+      "credentials": {
+        "name": "Credenciales"
+      }
     },
     "button": {
-      "refresh": { "name": "Actualizar por Bluetooth" },
-      "enable_auxiliary_locking_on_close": { "name": "Activar bloqueo automático al cerrar" },
-      "enable_auxiliary_locking_relock": { "name": "Activar re-bloqueo de seguridad" }
+      "refresh": {
+        "name": "Actualizar por Bluetooth"
+      },
+      "enable_auxiliary_locking_on_close": {
+        "name": "Activar bloqueo automático al cerrar"
+      },
+      "enable_auxiliary_locking_relock": {
+        "name": "Activar re-bloqueo de seguridad"
+      }
     },
     "select": {
       "alert_volume": {
         "name": "Volumen de alerta",
-        "state": { "high": "Alto", "medium": "Medio", "low": "Bajo", "silent": "Silencio" }
+        "state": {
+          "high": "Alto",
+          "medium": "Medio",
+          "low": "Bajo",
+          "silent": "Silencio"
+        }
       },
       "alarm_volume": {
         "name": "Volumen de alarma",
-        "state": { "normal": "Normal", "silent": "Silencio" }
+        "state": {
+          "normal": "Normal",
+          "silent": "Silencio"
+        }
       },
       "language": {
         "name": "Idioma",
-        "state": { "es": "Español", "en": "Inglés", "fr": "Francés", "de": "Alemán", "it": "Italiano", "pt": "Portugués" }
+        "state": {
+          "es": "Español",
+          "en": "Inglés",
+          "fr": "Francés",
+          "de": "Alemán",
+          "it": "Italiano",
+          "pt": "Portugués"
+        }
       }
     },
     "number": {
-      "alert_delay": { "name": "Retraso de alerta (puerta abierta)" },
-      "verify_fail_time": { "name": "Duración del bloqueo de teclado" },
-      "auto_lockup_relock_delay": { "name": "Retraso del re-bloqueo de seguridad" },
-      "auto_lock_on_close_delay": { "name": "Retraso del bloqueo automático al cerrar" }
+      "alert_delay": {
+        "name": "Retraso de alerta (puerta abierta)"
+      },
+      "verify_fail_time": {
+        "name": "Duración del bloqueo de teclado"
+      },
+      "auto_lockup_relock_delay": {
+        "name": "Retraso del re-bloqueo de seguridad"
+      },
+      "auto_lock_on_close_delay": {
+        "name": "Retraso del bloqueo automático al cerrar"
+      }
     }
   },
   "options": {
@@ -97,6 +148,22 @@
           "realtime_state": "Estado BLE en tiempo real (eventos push; una conexión mantenida)",
           "poll_hours": "Poll de fondo cada N horas (0 = desactivado / a demanda)",
           "offline_mode": "Modo offline (Bluetooth sin cloud tras el arranque)"
+        }
+      }
+    }
+  },
+  "services": {
+    "add_visitor_password": {
+      "name": "Añadir contraseña de visitante",
+      "description": "Da de alta un PIN de visitante en la Aqara U200 por Bluetooth (funciona offline). El panel del teclado debe estar despierto.",
+      "fields": {
+        "pin": {
+          "name": "PIN",
+          "description": "El PIN de visitante — un número PAR de dígitos (p. ej. 6 u 8)."
+        },
+        "group_id": {
+          "name": "Grupo",
+          "description": "Id de grupo de credencial (avanzado; déjalo en 1)."
         }
       }
     }

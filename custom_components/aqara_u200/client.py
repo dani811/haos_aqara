@@ -118,6 +118,10 @@ class AqaraU200Client(Protocol):
         """Read the user/credential table over BLE; None if unavailable."""
         ...
 
+    async def async_add_visitor_password(self, pin: str, group_id: int = 1) -> str | None:
+        """Enrol a visitor PIN over BLE; return the lock's reply hex or None."""
+        ...
+
     async def async_lock(self) -> bool | None:
         """Lock the device; return the real bolt position if observed."""
         ...
@@ -323,6 +327,19 @@ class AqaraU200BleClientAdapter:
             lambda c: c.read_user_table(), is_useful=lambda value: bool(value)
         )
         return creds or None
+
+    async def async_add_visitor_password(self, pin: str, group_id: int = 1) -> str | None:
+        """Enrol a visitor PIN over BLE (offline-capable).
+
+        Opens one session and sends the USER-family enrol frame via the library's
+        ``add_visitor_password``. Returns the lock's reply hex (a non-empty reply
+        with status ``0x00`` means success; the reply may be ``None`` even when the
+        write lands, since the lock's state events share the notify channel). The
+        credential store lives in the sleeping front panel, so it must be awake.
+        """
+        return await self._async_one_read(
+            lambda c: c.add_visitor_password(pin, group_id)
+        )
 
     async def async_lock(self) -> bool | None:
         """Run one confirmed lock operation without actuation retries."""
