@@ -37,6 +37,7 @@ async def async_setup_entry(
             AqaraU200PullSpringRetraction(entry, coordinator),
             AqaraU200SystemVolume(entry, coordinator),
             AqaraU200Language(entry, coordinator),
+            AqaraU200Credentials(entry, coordinator),
         ]
     )
 
@@ -128,6 +129,33 @@ class AqaraU200Language(_AqaraU200SensorBase):
     def native_value(self) -> str | None:
         """Return the language code (e.g. 'es'), or None until read."""
         return self.coordinator.data.language
+
+
+class AqaraU200Credentials(_AqaraU200SensorBase):
+    """Number of enrolled credentials, read over BLE (MIOT user table, 0x1f).
+
+    The lock never exposes PIN plaintext — only the count and a per-type
+    breakdown (password/fingerprint/NFC/key/face) are shown, the latter as
+    attributes. None until the first successful read (the table lives in the
+    front panel, which may be asleep).
+    """
+
+    _attr_translation_key = "credentials"
+
+    def __init__(self, entry: AqaraU200ConfigEntry, coordinator: AqaraU200Coordinator) -> None:
+        """Initialize the credential-count sensor."""
+        super().__init__(entry, coordinator, "credentials")
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the number of enrolled credentials, or None until read."""
+        return self.coordinator.data.credential_count
+
+    @property
+    def extra_state_attributes(self) -> dict[str, int] | None:
+        """Return the per-type credential breakdown, or None until read."""
+        by_type = self.coordinator.data.credentials_by_type
+        return dict(by_type) if by_type is not None else None
 
 
 class AqaraU200Battery(CoordinatorEntity[AqaraU200Coordinator], SensorEntity):

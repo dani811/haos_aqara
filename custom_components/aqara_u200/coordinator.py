@@ -64,6 +64,11 @@ class AqaraU200RuntimeSnapshot:
     language: str | None = None
     alert_volume: str | None = None
     alarm_volume: str | None = None
+    #: User/credential table read over BLE (feature 003; None until first read).
+    #: Count of enrolled credentials and a per-type breakdown (password/finger/
+    #: NFC/...). The lock never exposes PIN plaintext, so only counts are held.
+    credential_count: int | None = None
+    credentials_by_type: tuple[tuple[str, int], ...] | None = None
 
 
 class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
@@ -94,6 +99,8 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         self._is_locked: bool | None = None
         self._battery_percent: int | None = None
         self._settings = LockSettings()
+        self._credential_count: int | None = None
+        self._credentials_by_type: tuple[tuple[str, int], ...] | None = None
         self._realtime_task: asyncio.Task[None] | None = None
         self._listen_handle: asyncio.Task[None] | None = None
         self._realtime_stop = asyncio.Event()
@@ -299,7 +306,15 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         first lap, so a one-off proxy hiccup doesn't leave a value stuck
         'unknown' until the next restart or a manual Refresh press.
         """
-        order = ("state", "battery", "door_type", "assist_turn", "pull_spring", "config")
+        order = (
+            "state",
+            "battery",
+            "door_type",
+            "assist_turn",
+            "pull_spring",
+            "config",
+            "credentials",
+        )
         await self._async_refresh_pass(order, gap_before_first=False)
 
         missing = [name for name in order if self._is_unread(name)]
@@ -327,6 +342,8 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             return self._settings.assist_turn is None
         if name == "pull_spring":
             return self._settings.pull_spring_enabled is None
+        if name == "credentials":
+            return self._credential_count is None
         # "config" is one burst read (volume/language) — retry it if any part
         # of the burst is still missing.
         return (
@@ -377,6 +394,8 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             return await self.client.async_read_assist_turn()
         if name == "config":
             return await self.client.async_read_settings()
+        if name == "credentials":
+            return await self.client.async_read_user_table()
         return await self.client.async_read_pull_spring()
 
     @callback
@@ -390,6 +409,18 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         if name == "battery":
             if value != self._battery_percent:
                 self._battery_percent = value
+                return True
+            return False
+        if name == "credentials":  # list[UserCredential] -> count + per-type tally
+            by_type: dict[str, int] = {}
+            for cred in value:
+                by_type[cred.type_name] = by_type.get(cred.type_name, 0) + 1
+            new_by_type = tuple(sorted(by_type.items()))
+            if len(value) != self._credential_count or (
+                new_by_type != self._credentials_by_type
+            ):
+                self._credential_count = len(value)
+                self._credentials_by_type = new_by_type
                 return True
             return False
         if name == "door_type":
@@ -644,4 +675,6 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             language=self._settings.language,
             alert_volume=self._settings.alert_volume,
             alarm_volume=self._settings.alarm_volume,
+            credential_count=self._credential_count,
+            credentials_by_type=self._credentials_by_type,
         )

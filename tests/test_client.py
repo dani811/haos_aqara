@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from aqara_ble import CloudServiceError, LockOperation, LockSettings
+from aqara_ble import CloudServiceError, LockOperation, LockSettings, UserCredential
 from bleak_retry_connector import BleakConnectionError
 
 from custom_components.aqara_u200.client import AqaraU200BleClientAdapter
@@ -16,7 +16,7 @@ from custom_components.aqara_u200.exceptions import (
 
 
 def _adapter(manager: Mock) -> AqaraU200BleClientAdapter:
-    return AqaraU200BleClientAdapter(manager, Mock(), "device-secret", "EU")
+    return AqaraU200BleClientAdapter(Mock(), manager, Mock(), "device-secret", "EU")
 
 
 async def test_adapter_uses_fresh_ha_routed_connection_per_operation() -> None:
@@ -426,3 +426,77 @@ async def test_async_set_alert_volume_raises_when_the_lock_never_answers() -> No
         pytest.raises(AqaraU200OperationError),
     ):
         await _adapter(manager).async_set_alert_volume(1)
+
+
+def _offline_adapter(manager: Mock, *, ltmk_result: object) -> AqaraU200BleClientAdapter:
+    """Adapter whose hass executor returns (or raises) the given LTMK result."""
+    hass = Mock()
+    if isinstance(ltmk_result, Exception):
+        hass.async_add_executor_job = AsyncMock(side_effect=ltmk_result)
+    else:
+        hass.async_add_executor_job = AsyncMock(return_value=ltmk_result)
+    return AqaraU200BleClientAdapter(hass, manager, Mock(), "did", "EU")
+
+
+async def test_enable_offline_success_sets_ltmk() -> None:
+    """A successful cloud LTMK fetch switches the adapter to offline sessions."""
+    adapter = _offline_adapter(Mock(), ltmk_result=bytes(32))
+    assert await adapter.async_enable_offline() is True
+    assert adapter.offline_enabled is True
+
+
+async def test_enable_offline_failure_stays_on_cloud() -> None:
+    """A failed LTMK fetch keeps the cloud path (never breaks control)."""
+    adapter = _offline_adapter(Mock(), ltmk_result=RuntimeError("cloud down"))
+    assert await adapter.async_enable_offline() is False
+    assert adapter.offline_enabled is False
+
+
+async def test_offline_ltmk_is_passed_to_from_gatt() -> None:
+    """Once offline is enabled, the LTMK rides into every from_gatt session."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    creds = [UserCredential(1, 2, "password", 1, 1_700_000_000, "aa")]
+    protocol_client = SimpleNamespace(read_user_table=AsyncMock(return_value=creds))
+    adapter = _offline_adapter(manager, ltmk_result=bytes(range(32)))
+    await adapter.async_enable_offline()
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ) as from_gatt,
+        patch("custom_components.aqara_u200.client.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await adapter.async_read_user_table()
+
+    assert result == creds
+    assert from_gatt.call_args.kwargs["ltmk"] == bytes(range(32))
+
+
+async def test_async_read_user_table_empty_returns_none() -> None:
+    """An empty (asleep-panel) table reads back as None, not an empty list."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(read_user_table=AsyncMock(return_value=[]))
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+        patch("custom_components.aqara_u200.client.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await _adapter(manager).async_read_user_table()
+
+    assert result is None

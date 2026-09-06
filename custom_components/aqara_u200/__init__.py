@@ -13,9 +13,11 @@ from .bluetooth import AqaraU200BluetoothManager
 from .client import AqaraU200BleClientAdapter, AqaraU200Client, build_cloud_auth
 from .const import (
     CONF_DEVICE_ID,
+    CONF_OFFLINE_MODE,
     CONF_POLL_HOURS,
     CONF_REALTIME_STATE,
     CONF_REGION,
+    DEFAULT_OFFLINE_MODE,
     DEFAULT_POLL_HOURS,
     DEFAULT_REALTIME_STATE,
     DEFAULT_REGION,
@@ -75,7 +77,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AqaraU200ConfigEntry) ->
     device_id = entry.data[CONF_DEVICE_ID]
     region = entry.data.get(CONF_REGION, DEFAULT_REGION)
     client: AqaraU200Client = AqaraU200BleClientAdapter(
-        bluetooth_manager, auth, device_id, region
+        hass, bluetooth_manager, auth, device_id, region
     )
     coordinator = AqaraU200Coordinator(hass, entry, bluetooth_manager, client)
 
@@ -113,6 +115,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: AqaraU200ConfigEntry) ->
     entry.async_on_unload(coordinator.async_stop_battery)
     if entry.options.get(CONF_POLL_HOURS, DEFAULT_POLL_HOURS):
         coordinator.async_start_battery()
+
+    # Opt-in offline (cloud-cut): fetch the LTMK once in the background and switch
+    # BLE sessions to local derivation. Best-effort — the adapter falls back to
+    # the cloud path if the fetch fails, so this never blocks setup or control.
+    if entry.options.get(CONF_OFFLINE_MODE, DEFAULT_OFFLINE_MODE):
+        entry.async_create_background_task(
+            hass, client.async_enable_offline(), f"{DOMAIN}_offline_enable"
+        )
 
     entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
     return True

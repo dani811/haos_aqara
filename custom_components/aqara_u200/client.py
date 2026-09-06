@@ -16,6 +16,7 @@ from aqara_ble import (
     LockOperationWrite,
     OperationInProgressError,
     U200ClientError,
+    UserCredential,
     build_set_alarm_volume,
     build_set_alert_delay,
     build_set_alert_volume,
@@ -102,6 +103,19 @@ class AqaraU200Client(Protocol):
     @property
     def control_enabled(self) -> bool:
         """Return whether real lock control is safe and enabled."""
+        ...
+
+    @property
+    def offline_enabled(self) -> bool:
+        """Return whether the offline (cloud-cut) session is active."""
+        ...
+
+    async def async_enable_offline(self) -> bool:
+        """Fetch the LTMK once and switch to offline sessions; False on failure."""
+        ...
+
+    async def async_read_user_table(self) -> list[UserCredential] | None:
+        """Read the user/credential table over BLE; None if unavailable."""
         ...
 
     async def async_lock(self) -> bool | None:
@@ -246,21 +260,69 @@ class AqaraU200BleClientAdapter:
 
     def __init__(
         self,
+        hass: HomeAssistant,
         bluetooth_manager: AqaraU200BluetoothManager,
         auth: CloudAuthManager,
         device_id: str,
         region: str,
     ) -> None:
-        """Initialize a stateless adapter for one config entry."""
+        """Initialize an adapter for one config entry.
+
+        Holds only one piece of state: ``_ltmk`` — the offline session master
+        key, ``None`` until ``async_enable_offline()`` fetches it (opt-in). While
+        it is ``None`` every operation logs in through the cloud, unchanged.
+        """
+        self._hass = hass
         self._bluetooth_manager = bluetooth_manager
         self._auth = auth
         self._device_id = device_id
         self._region = region
+        self._ltmk: bytes | None = None
 
     @property
     def control_enabled(self) -> bool:
         """Confirmed lock and unlock operations are enabled."""
         return True
+
+    @property
+    def offline_enabled(self) -> bool:
+        """Return whether the offline (cloud-cut) session is active."""
+        return self._ltmk is not None
+
+    async def async_enable_offline(self) -> bool:
+        """Fetch the LTMK from the cloud once and switch to offline sessions.
+
+        Best-effort: on any failure the adapter stays on the cloud path (returns
+        ``False``) so enabling offline can never break control. The key is kept
+        only in memory (never persisted).
+        """
+        try:
+            ltmk = await self._hass.async_add_executor_job(
+                self._auth.fetch_ltmk, self._device_id
+            )
+        except Exception as err:  # noqa: BLE001 - fall back to cloud on any failure
+            _LOGGER.warning(
+                "Offline mode: LTMK fetch failed (%s); staying on the cloud path",
+                type(err).__name__,
+            )
+            return False
+        self._ltmk = ltmk
+        _LOGGER.info(
+            "Offline mode enabled: BLE sessions derive locally (no per-operation cloud call)"
+        )
+        return True
+
+    async def async_read_user_table(self) -> list[UserCredential] | None:
+        """Read the user/credential table over BLE (MIOT SYNC_USER_ID, 0x1f).
+
+        Returns the credential rows (type/user id/index/created-at — the lock
+        never returns PIN plaintext), or ``None`` if the table could not be read
+        (e.g. the front panel was asleep, which yields an empty reassembly).
+        """
+        creds = await self._async_read_retry(
+            lambda c: c.read_user_table(), is_useful=lambda value: bool(value)
+        )
+        return creds or None
 
     async def async_lock(self) -> bool | None:
         """Run one confirmed lock operation without actuation retries."""
@@ -312,6 +374,7 @@ class AqaraU200BleClientAdapter:
                 gatt_client=bleak_client,
                 device_id=self._device_id,
                 region=self._region,
+                ltmk=self._ltmk,
             )
             await protocol_client.listen(seconds, on_event=on_event, low_power=True)
         except asyncio.CancelledError:
@@ -403,6 +466,7 @@ class AqaraU200BleClientAdapter:
                 gatt_client=bleak_client,
                 device_id=self._device_id,
                 region=self._region,
+                ltmk=self._ltmk,
             )
             return await reader(protocol_client)
         except asyncio.CancelledError:
@@ -590,6 +654,7 @@ class AqaraU200BleClientAdapter:
                 gatt_client=bleak_client,
                 device_id=self._device_id,
                 region=self._region,
+                ltmk=self._ltmk,
             )
             started = True
             await protocol_client.change_language(language)
@@ -655,6 +720,7 @@ class AqaraU200BleClientAdapter:
                 gatt_client=bleak_client,
                 device_id=self._device_id,
                 region=self._region,
+                ltmk=self._ltmk,
             )
             operation_started = True
             op = {
