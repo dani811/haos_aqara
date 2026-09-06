@@ -2,9 +2,12 @@
 
 from typing import Any
 
+import voluptuous as vol
 from homeassistant.components.lock import LockEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -14,15 +17,33 @@ from .const import DOMAIN
 from .coordinator import AqaraU200Coordinator
 from .exceptions import AqaraU200Error
 
+SERVICE_ADD_VISITOR_PASSWORD = "add_visitor_password"
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: AqaraU200ConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the Aqara U200 lock entity."""
+    """Set up the Aqara U200 lock entity and its services."""
     del hass
     async_add_entities([AqaraU200Lock(entry, entry.runtime_data.coordinator)])
+
+    # Entity service: users target the lock and enrol a visitor PIN over BLE.
+    # In real HA this runs inside the platform-setup context; a unit test may call
+    # this function directly (no current platform) — skip registration there.
+    try:
+        platform = entity_platform.async_get_current_platform()
+    except RuntimeError:
+        return
+    platform.async_register_entity_service(
+        SERVICE_ADD_VISITOR_PASSWORD,
+        {
+            vol.Required("pin"): vol.All(cv.string, vol.Match(r"^\d+$"), vol.Length(min=4)),
+            vol.Optional("group_id", default=1): vol.All(int, vol.Range(min=0, max=255)),
+        },
+        "async_add_visitor_password",
+    )
 
 
 class AqaraU200Lock(CoordinatorEntity[AqaraU200Coordinator], LockEntity):
@@ -81,5 +102,16 @@ class AqaraU200Lock(CoordinatorEntity[AqaraU200Coordinator], LockEntity):
         del kwargs
         try:
             await self.coordinator.async_unlock()
+        except AqaraU200Error as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def async_add_visitor_password(self, pin: str, group_id: int = 1) -> None:
+        """Enrol a visitor PIN over BLE (service target: this lock).
+
+        Offline-capable (uses the library's ``add_visitor_password``). The PIN is
+        an even number of digits; the front keypad panel must be awake.
+        """
+        try:
+            await self.coordinator.async_add_visitor_password(pin, group_id)
         except AqaraU200Error as err:
             raise HomeAssistantError(str(err)) from err

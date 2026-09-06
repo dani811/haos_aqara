@@ -500,3 +500,27 @@ async def test_async_read_user_table_empty_returns_none() -> None:
         result = await _adapter(manager).async_read_user_table()
 
     assert result is None
+
+
+async def test_add_visitor_password_sends_frame() -> None:
+    """The adapter enrols a visitor PIN via the library over one BLE session."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        add_visitor_password=AsyncMock(return_value="1300100c")
+    )
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        reply = await _adapter(manager).async_add_visitor_password("730492", 1)
+
+    assert reply == "1300100c"
+    protocol_client.add_visitor_password.assert_awaited_once_with("730492", 1)
