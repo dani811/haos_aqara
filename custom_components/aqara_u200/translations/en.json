@@ -177,6 +177,20 @@
           "description": "The lock's user id, as reported by the credentials sensor / the Aqara cloud (a 32-bit number)."
         }
       }
+    },
+    "enrol_credential": {
+      "name": "Enrol fingerprint/NFC (experimental)",
+      "description": "EXPERIMENTAL, interactive. Start a fingerprint or NFC-card enrolment over Bluetooth. The keypad must be awake and you must physically present the finger (several times) or tap the card at the sensor. Fires aqara_u200_enrol_progress events during the flow. Not yet verified end-to-end.",
+      "fields": {
+        "user_group_id": {
+          "name": "User group id",
+          "description": "The user (group) id the credential attaches to (0-255)."
+        },
+        "kind": {
+          "name": "Credential kind",
+          "description": "What to enrol (admin variants grant admin permission)."
+        }
+      }
     }
   }
 }

@@ -13,12 +13,13 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import AqaraU200ConfigEntry
-from .const import DOMAIN
+from .const import DOMAIN, ENROL_KINDS
 from .coordinator import AqaraU200Coordinator
 from .exceptions import AqaraU200Error
 
 SERVICE_ADD_VISITOR_PASSWORD = "add_visitor_password"
 SERVICE_DELETE_USER = "delete_user"
+SERVICE_ENROL_CREDENTIAL = "enrol_credential"
 
 
 async def async_setup_entry(
@@ -52,6 +53,16 @@ async def async_setup_entry(
             vol.Required("user_id"): vol.All(int, vol.Range(min=0, max=0xFFFFFFFF)),
         },
         "async_delete_user",
+    )
+    # Entity service (experimental): drive a fingerprint/NFC enrol. Interactive —
+    # the person presents the finger/card at the awake front-panel sensor.
+    platform.async_register_entity_service(
+        SERVICE_ENROL_CREDENTIAL,
+        {
+            vol.Required("user_group_id"): vol.All(int, vol.Range(min=0, max=255)),
+            vol.Optional("kind", default="finger"): vol.In(ENROL_KINDS),
+        },
+        "async_enrol_credential",
     )
 
 
@@ -136,5 +147,19 @@ class AqaraU200Lock(CoordinatorEntity[AqaraU200Coordinator], LockEntity):
         """
         try:
             await self.coordinator.async_delete_user(user_id)
+        except AqaraU200Error as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def async_enrol_credential(
+        self, user_group_id: int, kind: str = "finger"
+    ) -> None:
+        """Drive a fingerprint/NFC enrol (experimental; service target: this lock).
+
+        Interactive/physical: the front keypad panel must be awake and the person
+        presents the finger (several times) or taps the card at the sensor. The
+        integration fires ``aqara_u200_enrol_progress`` events during the flow.
+        """
+        try:
+            await self.coordinator.async_enrol_credential(user_group_id, kind)
         except AqaraU200Error as err:
             raise HomeAssistantError(str(err)) from err

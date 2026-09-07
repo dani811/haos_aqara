@@ -177,6 +177,20 @@
           "description": "El id de usuario de la cerradura, tal como lo indica el sensor de credenciales / el cloud de Aqara (un número de 32 bits)."
         }
       }
+    },
+    "enrol_credential": {
+      "name": "Enrolar huella/NFC (experimental)",
+      "description": "EXPERIMENTAL, interactivo. Inicia el alta de una huella o tarjeta NFC por Bluetooth. El teclado debe estar despierto y debes presentar físicamente el dedo (varias veces) o acercar la tarjeta al sensor. Emite eventos aqara_u200_enrol_progress durante el proceso. Aún sin verificar de extremo a extremo.",
+      "fields": {
+        "user_group_id": {
+          "name": "Id de grupo de usuario",
+          "description": "El id de usuario (grupo) al que se asocia la credencial (0-255)."
+        },
+        "kind": {
+          "name": "Tipo de credencial",
+          "description": "Qué enrolar (las variantes admin conceden permiso de administrador)."
+        }
+      }
     }
   }
 }

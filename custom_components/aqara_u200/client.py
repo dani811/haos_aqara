@@ -130,6 +130,17 @@ class AqaraU200Client(Protocol):
         """Read whether the front keypad panel is awake (True/False), None if unreadable."""
         ...
 
+    async def async_enrol_credential(
+        self,
+        user_group_id: int,
+        kind: str,
+        *,
+        on_report: Callable[[object], None] | None = None,
+        timeout: float = 60.0,
+    ) -> object | None:
+        """Drive a fingerprint/NFC enrol over BLE; return the terminal report or None."""
+        ...
+
     async def async_lock(self) -> bool | None:
         """Lock the device; return the real bolt position if observed."""
         ...
@@ -722,6 +733,81 @@ class AqaraU200BleClientAdapter:
                 ) from err
             raise AqaraU200OperationError(
                 f"Aqara U200 language change to {language} failed"
+            ) from err
+        finally:
+            if bleak_client is not None:
+                try:
+                    async with asyncio.timeout(_DISCONNECT_TIMEOUT):
+                        await bleak_client.disconnect()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as err:  # noqa: BLE001 - best-effort disconnect
+                    _LOGGER.debug(
+                        "Aqara U200 BLE disconnect failed (%s)", type(err).__name__
+                    )
+
+    async def async_enrol_credential(
+        self,
+        user_group_id: int,
+        kind: str,
+        *,
+        on_report: Callable[[object], None] | None = None,
+        timeout: float = 60.0,
+    ) -> object | None:
+        """Drive a fingerprint/NFC enrol over BLE (holds one session for the flow).
+
+        Opens one BLE session and runs the library's ``enrol_credential`` — sends
+        the ADD_USER start frame and decodes the lock's interactive report loop,
+        forwarding each report to ``on_report``. Returns the terminal report
+        (``kind`` ``"success"``/``"failed"``/``"timeout"``) or ``None`` if nothing
+        terminal arrived in ``timeout``. The front-panel sensor must be awake and
+        the person presents the finger/card. Experimental — the library driver is
+        not yet live-verified.
+        """
+        ble_device = self._bluetooth_manager.async_get_ble_device()
+        if ble_device is None:
+            raise AqaraU200BluetoothUnavailableError(
+                "Aqara U200 is not reachable through Home Assistant Bluetooth"
+            )
+        bleak_client: BleakClientWithServiceCache | None = None
+        started = False
+        try:
+            bleak_client = await establish_connection(
+                BleakClientWithServiceCache,
+                ble_device,
+                _CONNECTION_NAME,
+                ble_device_callback=lambda: (
+                    self._bluetooth_manager.async_get_ble_device() or ble_device
+                ),
+            )
+            protocol_client = ProtocolU200Client.from_gatt(
+                auth=self._auth,
+                gatt_client=bleak_client,
+                device_id=self._device_id,
+                region=self._region,
+                ltmk=self._ltmk,
+            )
+            started = True
+            return await protocol_client.enrol_credential(
+                user_group_id, kind, on_report=on_report, timeout=timeout
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:
+            if is_invalid_auth_error(err) or (
+                isinstance(err, U200ClientError) and err.phase is FlowPhase.LOGIN
+            ):
+                raise AqaraU200AuthenticationError(
+                    "Aqara rejected the configured credentials"
+                ) from err
+            if not started and isinstance(
+                err, (BleakConnectionError, BleakError, TimeoutError)
+            ):
+                raise AqaraU200BluetoothUnavailableError(
+                    "Could not connect to Aqara U200 through Home Assistant Bluetooth"
+                ) from err
+            raise AqaraU200OperationError(
+                f"Aqara U200 {kind} enrol failed"
             ) from err
         finally:
             if bleak_client is not None:

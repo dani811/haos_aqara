@@ -51,3 +51,41 @@ delete_user:
           min: 0
           max: 4294967295
           mode: box
+
+enrol_credential:
+  name: Enrol fingerprint/NFC (experimental)
+  description: >-
+    EXPERIMENTAL, interactive. Start a fingerprint or NFC-card enrolment on the
+    Aqara U200 over Bluetooth. The front keypad panel must be awake, and you must
+    physically present the finger (several times) or tap the card at the sensor
+    while it runs. The integration fires `aqara_u200_enrol_progress` events during
+    the flow. Not yet verified end-to-end against a real lock.
+  target:
+    entity:
+      integration: aqara_u200
+      domain: lock
+  fields:
+    user_group_id:
+      name: User group id
+      description: >-
+        The user (group) id the credential attaches to, 0-255. Use an existing
+        user's group id from the credentials sensor.
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 0
+          max: 255
+          mode: box
+    kind:
+      name: Credential kind
+      description: What to enrol (admin variants grant admin permission).
+      required: false
+      default: finger
+      selector:
+        select:
+          options:
+            - "finger"
+            - "nfc"
+            - "finger_admin"
+            - "nfc_admin"

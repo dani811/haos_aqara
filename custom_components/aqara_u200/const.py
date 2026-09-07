@@ -83,6 +83,17 @@ PRESENCE_POLL_SECONDS = 3.0
 #: blueprint). Unset → rely on the blueprint / a manual touch.
 CONF_KEYPAD_WAKE_SWITCH = "keypad_wake_switch"
 DEFAULT_KEYPAD_WAKE_SWITCH = ""
+
+#: Fingerprint/NFC enrolment (experimental). The enrol is interactive/physical:
+#: the front-panel sensor must be awake and the person presents the finger (several
+#: times) or taps the card. The coordinator fires this event on the HA bus for each
+#: decoded report (progress presses, then success/failed/timeout) so a card/
+#: automation can show "present finger N" and the completion.
+EVENT_ENROL_PROGRESS = f"{DOMAIN}_enrol_progress"
+#: Credential kinds the enrol service accepts (map to aqara_ble SOURCE_TYPES).
+ENROL_KINDS = ("finger", "nfc", "finger_admin", "nfc_admin")
+#: Overall enrol timeout (seconds) — a fingerprint takes several presses.
+ENROL_TIMEOUT_SECONDS = 90
 #: Languages exposed as select options. Lowercase, matching the read side
 #: (``aqara_ble.decode_language`` returns e.g. 'es'); passed to the library's
 #: ``change_language`` as-is (its ``select_voice_pack`` matches the pack file's
