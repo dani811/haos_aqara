@@ -107,6 +107,7 @@ switch** in the integration options or attach the bundled blueprint to it.
 
 - **Add visitor password** (`aqara_u200.add_visitor_password`) — enrol a visitor PIN.
 - **Delete credential** (`aqara_u200.delete_user`) — delete a credential by its lock user id (as shown by the credentials sensor / the Aqara cloud). Both wake the keypad first (see Presence) and error if it stays asleep.
+- **Enrol fingerprint/NFC** (`aqara_u200.enrol_credential`) — ⚠️ *experimental, interactive*: starts a fingerprint or NFC-card enrolment; you physically present the finger (several times) or tap the card at the awake front-panel sensor. Fires `aqara_u200_enrol_progress` events during the flow. Reversed + unit-tested, but **not yet verified end-to-end against a real lock**.
 
 ---
 

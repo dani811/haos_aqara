@@ -16,6 +16,7 @@ from custom_components.aqara_u200.client import LockSettings
 from custom_components.aqara_u200.const import (
     CONF_KEYPAD_WAKE_SWITCH,
     DOMAIN,
+    EVENT_ENROL_PROGRESS,
     EVENT_KEYPAD_PRESS_REQUIRED,
 )
 from custom_components.aqara_u200.coordinator import AqaraU200Coordinator
@@ -610,6 +611,31 @@ class CredentialClient(FullReadClient):
     async def async_read_user_table(self) -> list[UserCredential] | None:
         return list(self._table)
 
+    async def async_enrol_credential(
+        self, user_group_id, kind, *, on_report=None, timeout=60.0
+    ):
+        # Simulate the interactive report loop: two progress presses then success
+        # (or a failure if self.enrol_fail is set).
+        from aqara_ble import EnrolReport
+
+        self.enrolled = (user_group_id, kind)
+        if on_report:
+            on_report(EnrolReport(kind="progress", raw_hex="020720", status=0x20, press_count=1))
+            on_report(EnrolReport(kind="progress", raw_hex="020720", status=0x20, press_count=2))
+        if getattr(self, "enrol_fail", False):
+            fail = EnrolReport(kind="failed", raw_hex="020601", status=0x01)
+            if on_report:
+                on_report(fail)
+            return fail
+        done = EnrolReport(
+            kind="success", raw_hex="0206", status=0, user_group_id=user_group_id,
+            credential_id=42, credential_type="fingerprint", timestamp=1, ordinal=1,
+        )
+        if on_report:
+            on_report(done)
+        self._table = [*self._table, UserCredential(42, 1, "fingerprint", 1, 1, "dd")]
+        return done
+
 
 async def test_delete_user_deletes_and_rereads_when_keypad_awake(hass) -> None:
     """Keypad already awake: no prompt, delete lands, credential count re-read."""
@@ -678,3 +704,35 @@ async def test_presence_presses_configured_wake_switch(hass) -> None:
     assert len(calls) == 1
     assert calls[0].data["entity_id"] == "switch.pulsador"
     assert client.deleted == [2147614727]
+
+
+async def test_enrol_credential_success_fires_progress_and_rereads(hass) -> None:
+    """A successful enrol wakes the keypad, streams progress, and re-reads creds."""
+    client = CredentialClient([True])  # keypad already awake
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+    events = async_capture_events(hass, EVENT_ENROL_PROGRESS)
+
+    with patch("custom_components.aqara_u200.coordinator.asyncio.sleep"):
+        await coordinator.async_enrol_credential(1, "finger")
+
+    assert client.enrolled == (1, "finger")
+    # two progress presses + one success report were fired on the bus
+    kinds = [e.data["kind"] for e in events]
+    assert kinds == ["progress", "progress", "success"]
+    assert events[-1].data["credential_id"] == 42
+    assert coordinator.data.credential_count == 3  # 2 existing + 1 enrolled
+    assert coordinator.operation_in_progress is False
+
+
+async def test_enrol_credential_failure_raises(hass) -> None:
+    """A failed enrol raises and leaves operation state clean."""
+    client = CredentialClient([True])
+    client.enrol_fail = True
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+
+    with patch("custom_components.aqara_u200.coordinator.asyncio.sleep"):
+        with pytest.raises(AqaraU200OperationError):
+            await coordinator.async_enrol_credential(1, "finger")
+
+    assert coordinator.operation_in_progress is False
+    assert coordinator.data.last_error_type == "AqaraU200OperationError"

@@ -23,6 +23,8 @@ from .const import (
     DATA_PRESENCE_WINDOW_SECONDS,
     DEFAULT_POLL_HOURS,
     DOMAIN,
+    ENROL_TIMEOUT_SECONDS,
+    EVENT_ENROL_PROGRESS,
     EVENT_KEYPAD_PRESS_REQUIRED,
     LANGUAGE_PRESENCE_WINDOW_SECONDS,
     PRESENCE_POLL_SECONDS,
@@ -597,6 +599,78 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             require_presence="borrar una credencial",
             post_read="credentials",
         )
+
+    async def async_enrol_credential(
+        self, user_group_id: int, kind: str = "finger"
+    ) -> None:
+        """Drive a fingerprint/NFC enrol (experimental, interactive/physical).
+
+        Ensures the keypad is awake, then holds one BLE session while the library
+        decodes the lock's enrol report loop, firing ``aqara_u200_enrol_progress``
+        on the HA bus for each report so a card/automation can show "present finger
+        N" and the outcome. Re-reads the credential table afterwards. Raises on a
+        failed/timed-out enrol.
+
+        The person must physically present the finger (several times) or tap the
+        card at the front-panel sensor. The library driver is not yet live-verified.
+        """
+        self._preempt_listen()
+        async with self._operation_lock:
+            state = self.bluetooth_manager.state
+            if not state.reachable:
+                raise AqaraU200BluetoothUnavailableError(
+                    "Aqara U200 is not reachable through a connectable Bluetooth adapter"
+                )
+            self._operation_in_progress = True
+            self._last_operation = f"enrol_credential:{kind}"
+            self._last_error_type = None
+            self.async_set_updated_data(self._build_snapshot(state))
+
+            def _on_report(report: object) -> None:
+                self.hass.bus.async_fire(
+                    EVENT_ENROL_PROGRESS,
+                    {
+                        "entry_id": self._entry.entry_id,
+                        "kind": getattr(report, "kind", None),
+                        "status": getattr(report, "status", None),
+                        "press_count": getattr(report, "press_count", None),
+                        "user_group_id": getattr(report, "user_group_id", None),
+                        "credential_id": getattr(report, "credential_id", None),
+                        "credential_type": getattr(report, "credential_type", None),
+                    },
+                )
+
+            try:
+                await self._async_ensure_presence(
+                    "enrolar una credencial", window=DATA_PRESENCE_WINDOW_SECONDS
+                )
+                result = await self.client.async_enrol_credential(
+                    user_group_id, kind, on_report=_on_report,
+                    timeout=ENROL_TIMEOUT_SECONDS,
+                )
+                if result is None or getattr(result, "kind", None) != "success":
+                    reason = getattr(result, "kind", "no_completion")
+                    raise AqaraU200OperationError(
+                        f"Aqara U200 enrol did not complete ({reason})"
+                    )
+                credentials = await self.client.async_read_user_table()
+                if credentials is not None:
+                    self._apply_read("credentials", credentials)
+            except AqaraU200AuthenticationError as err:
+                self._last_error_type = type(err).__name__
+                self._entry.async_start_reauth(self.hass)
+                raise
+            except AqaraU200Error as err:
+                self._last_error_type = type(err).__name__
+                raise
+            except Exception as err:
+                self._last_error_type = type(err).__name__
+                raise AqaraU200OperationError("Aqara U200 enrol failed") from err
+            finally:
+                self._operation_in_progress = False
+                self.async_set_updated_data(
+                    self._build_snapshot(self.bluetooth_manager.state)
+                )
 
     def _keypad_wake_switch(self) -> str | None:
         """Return the configured keypad-wake switch entity id, or None."""
