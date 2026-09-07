@@ -143,11 +143,12 @@
     "step": {
       "init": {
         "title": "Aqara U200 options",
-        "description": "**Real-time BLE state** holds one Bluetooth connection open so the lock's own push reports (open/close, and more) arrive instantly — the BLE-native way to see keypad/key/manual opens, no polling. **Background poll (hours)** reads battery + settings periodically: 0 = off (on-demand only, via the Refresh button). **Offline mode** fetches the lock's key once at startup and then runs the Bluetooth channel without a per-operation cloud call (the key is kept only in memory; it falls back to the cloud if the fetch fails). Every Bluetooth read costs a little lock battery and, on a shared proxy (e.g. ESPHome), a connection slot — keep the poll off or long if that matters.",
+        "description": "**Real-time BLE state** holds one Bluetooth connection open so the lock's own push reports (open/close, and more) arrive instantly — the BLE-native way to see keypad/key/manual opens, no polling. **Background poll (hours)** reads battery + settings periodically: 0 = off (on-demand only, via the Refresh button). **Offline mode** fetches the lock's key once at startup and then runs the Bluetooth channel without a per-operation cloud call (the key is kept only in memory; it falls back to the cloud if the fetch fails). **Keypad wake switch** (optional) is a switch (e.g. a fingerbot on the keypad) the integration presses to wake the sleeping front panel for credential/setting operations. Every Bluetooth read costs a little lock battery and, on a shared proxy (e.g. ESPHome), a connection slot — keep the poll off or long if that matters.",
         "data": {
           "realtime_state": "Real-time BLE state (push events; one held connection)",
           "poll_hours": "Background poll every N hours (0 = off / on-demand)",
-          "offline_mode": "Offline mode (cloud-cut Bluetooth after startup)"
+          "offline_mode": "Offline mode (cloud-cut Bluetooth after startup)",
+          "keypad_wake_switch": "Keypad wake switch (fingerbot; optional, auto-wakes the keypad)"
         }
       }
     }
@@ -164,6 +165,16 @@
         "group_id": {
           "name": "Group",
           "description": "Credential group id (advanced; leave at 1)."
+        }
+      }
+    },
+    "delete_user": {
+      "name": "Delete credential",
+      "description": "Delete a credential (and its user) from the Aqara U200 over Bluetooth. The front keypad panel must be awake — the integration wakes it (or asks you) first and errors if it stays asleep.",
+      "fields": {
+        "user_id": {
+          "name": "User id",
+          "description": "The lock's user id, as reported by the credentials sensor / the Aqara cloud (a 32-bit number)."
         }
       }
     }

@@ -70,9 +70,9 @@ keypad and works any time.
    (`read_front_connection`). If it already is, the operation just runs — no
    prompt.
 2. **Auto-wake, if you have a fingerbot.** It fires the
-   `aqara_u200_keypad_press_required` event; the bundled **blueprint**
-   (`blueprints/automation/aqara_u200/`) presses your configured keypad
-   switch. Zero interaction.
+   `aqara_u200_keypad_press_required` event (the bundled **blueprint** presses
+   your keypad switch), and if you configured a **keypad wake switch** in the
+   options it turns that switch on directly. Zero interaction.
 3. **Ask you.** With no fingerbot (or if the press didn't register in time), it
    raises a **persistent notification**: *"touch the keypad in the next N
    seconds"*. One touch authorises the operation.
@@ -80,13 +80,14 @@ keypad and works any time.
    operation errors with the reason instead of **silently doing nothing** — so a
    credential write never looks like it worked when it didn't.
 
-Today this flow is wired for the **language change**; generalising it to the
-credential operations (add/delete) is the plan documented in
-[docs/presence-handling.md](docs/presence-handling.md), which also studies the
-detection, the escalation options, and the config for automatic wake.
+This ladder runs for the **credential operations** (add via the *Add visitor
+password* service, delete via the *Delete credential* service) and the **voice-OTA
+language change**. The design — detection, escalation, config — is documented in
+[docs/presence-handling.md](docs/presence-handling.md).
 
 **To make waking automatic:** fit an Aqara fingerbot (or any BLE/Zigbee button)
-over the keypad, expose it as a `switch`, and attach the bundled blueprint to it.
+over the keypad, expose it as a `switch`, and either set it as the **keypad wake
+switch** in the integration options or attach the bundled blueprint to it.
 
 ---
 
@@ -100,6 +101,12 @@ over the keypad, expose it as a `switch`, and attach the bundled blueprint to it
 - **Offline mode** — opt-in, **off by default**. When on, the LTMK is fetched once at startup and control runs cloud-free (see the table above).
 - **Real-time BLE state** — hold one Bluetooth connection open so the lock's own push reports (open/close, key/keypad/manual) arrive instantly, no polling. Costs a little lock battery.
 - **Background poll (hours)** — periodically read battery + settings. `0` = off (on-demand only, via the Refresh button).
+- **Keypad wake switch** — optional. A `switch` (e.g. a fingerbot on the keypad) the integration turns on to wake the sleeping front panel for a presence-gated operation. Leave empty to rely on the bundled blueprint or a manual touch.
+
+### Services (target the lock entity)
+
+- **Add visitor password** (`aqara_u200.add_visitor_password`) — enrol a visitor PIN.
+- **Delete credential** (`aqara_u200.delete_user`) — delete a credential by its lock user id (as shown by the credentials sensor / the Aqara cloud). Both wake the keypad first (see Presence) and error if it stays asleep.
 
 ---
 

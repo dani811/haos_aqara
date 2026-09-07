@@ -143,11 +143,12 @@
     "step": {
       "init": {
         "title": "Opciones de Aqara U200",
-        "description": "El **estado BLE en tiempo real** mantiene UNA conexión Bluetooth abierta para recibir al instante los avisos que la propia cerradura empuja (abrir/cerrar, y más) — la vía BLE nativa para ver aperturas de teclado/llave/manual, sin polling. El **poll de fondo (horas)** lee batería + ajustes periódicamente: 0 = desactivado (solo a demanda, con el botón Actualizar). El **modo offline** obtiene la clave de la cerradura una vez al arrancar y luego usa el canal Bluetooth sin llamada al cloud por operación (la clave se guarda solo en memoria; si la obtención falla, vuelve al cloud). Cada lectura Bluetooth gasta algo de batería de la cerradura y, en un proxy compartido (p.ej. ESPHome), una ranura de conexión — déjalo desactivado o largo si eso te importa.",
+        "description": "El **estado BLE en tiempo real** mantiene UNA conexión Bluetooth abierta para recibir al instante los avisos que la propia cerradura empuja (abrir/cerrar, y más) — la vía BLE nativa para ver aperturas de teclado/llave/manual, sin polling. El **poll de fondo (horas)** lee batería + ajustes periódicamente: 0 = desactivado (solo a demanda, con el botón Actualizar). El **modo offline** obtiene la clave de la cerradura una vez al arrancar y luego usa el canal Bluetooth sin llamada al cloud por operación (la clave se guarda solo en memoria; si la obtención falla, vuelve al cloud). El **pulsador del teclado** (opcional) es un switch (p. ej. un fingerbot sobre el teclado) que la integración acciona para despertar el panel frontal dormido en las operaciones de credenciales/ajustes. Cada lectura Bluetooth gasta algo de batería de la cerradura y, en un proxy compartido (p.ej. ESPHome), una ranura de conexión — déjalo desactivado o largo si eso te importa.",
         "data": {
           "realtime_state": "Estado BLE en tiempo real (eventos push; una conexión mantenida)",
           "poll_hours": "Poll de fondo cada N horas (0 = desactivado / a demanda)",
-          "offline_mode": "Modo offline (Bluetooth sin cloud tras el arranque)"
+          "offline_mode": "Modo offline (Bluetooth sin cloud tras el arranque)",
+          "keypad_wake_switch": "Pulsador del teclado (fingerbot; opcional, despierta el teclado)"
         }
       }
     }
@@ -164,6 +165,16 @@
         "group_id": {
           "name": "Grupo",
           "description": "Id de grupo de credencial (avanzado; déjalo en 1)."
+        }
+      }
+    },
+    "delete_user": {
+      "name": "Borrar credencial",
+      "description": "Borra una credencial (y su usuario) de la Aqara U200 por Bluetooth. El panel del teclado debe estar despierto — la integración lo despierta (o te lo pide) primero y da error si sigue dormido.",
+      "fields": {
+        "user_id": {
+          "name": "Id de usuario",
+          "description": "El id de usuario de la cerradura, tal como lo indica el sensor de credenciales / el cloud de Aqara (un número de 32 bits)."
         }
       }
     }

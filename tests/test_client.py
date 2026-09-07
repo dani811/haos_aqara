@@ -524,3 +524,47 @@ async def test_add_visitor_password_sends_frame() -> None:
 
     assert reply == "1300100c"
     protocol_client.add_visitor_password.assert_awaited_once_with("730492", 1)
+
+
+async def test_delete_user_sends_frame() -> None:
+    """The adapter deletes a credential via the library over one BLE session."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(delete_user=AsyncMock(return_value=None))
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        reply = await _adapter(manager).async_delete_user(2147614727)
+
+    assert reply is None
+    protocol_client.delete_user.assert_awaited_once_with(2147614727)
+
+
+async def test_read_front_connection_returns_presence() -> None:
+    """The adapter reports keypad presence via the library (0xdd)."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(read_front_connection=AsyncMock(return_value=True))
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        present = await _adapter(manager).async_read_front_connection()
+
+    assert present is True
+    protocol_client.read_front_connection.assert_awaited_once_with()

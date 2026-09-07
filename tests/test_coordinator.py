@@ -8,15 +8,21 @@ from aqara_ble import LockEvent, UserCredential
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_capture_events,
+    async_mock_service,
 )
 
 from custom_components.aqara_u200.bluetooth import AqaraU200BluetoothState
 from custom_components.aqara_u200.client import LockSettings
-from custom_components.aqara_u200.const import DOMAIN, EVENT_KEYPAD_PRESS_REQUIRED
+from custom_components.aqara_u200.const import (
+    CONF_KEYPAD_WAKE_SWITCH,
+    DOMAIN,
+    EVENT_KEYPAD_PRESS_REQUIRED,
+)
 from custom_components.aqara_u200.coordinator import AqaraU200Coordinator
 from custom_components.aqara_u200.exceptions import (
     AqaraU200AuthenticationError,
     AqaraU200OperationError,
+    AqaraU200PresenceRequiredError,
 )
 
 
@@ -568,3 +574,107 @@ async def test_set_alert_volume_propagates_a_failed_write(hass) -> None:
 
     assert coordinator.operation_in_progress is False
     assert coordinator.data.last_error_type == "AqaraU200OperationError"
+
+
+class CredentialClient(FullReadClient):
+    """A client for the presence-gated credential ops (add/delete).
+
+    ``presence`` is the sequence ``async_read_front_connection`` returns per call
+    (the last value repeats); the mutable table proves the coordinator re-reads.
+    """
+
+    def __init__(self, presence: list[bool | None]) -> None:
+        self._presence = presence
+        self.front_calls = 0
+        self.deleted: list[int] = []
+        self.added: list[tuple[str, int]] = []
+        self._table = [
+            UserCredential(2147614727, 2, "password", 7, 1_700_000_100, "aa"),
+            UserCredential(2147614723, 2, "password", 3, 1_700_000_200, "bb"),
+        ]
+
+    async def async_read_front_connection(self) -> bool | None:
+        self.front_calls += 1
+        return self._presence[min(self.front_calls - 1, len(self._presence) - 1)]
+
+    async def async_delete_user(self, user_id: int) -> str | None:
+        self.deleted.append(user_id)
+        self._table = [c for c in self._table if c.user_id != user_id]
+        return None
+
+    async def async_add_visitor_password(self, pin: str, group_id: int = 1) -> str | None:
+        self.added.append((pin, group_id))
+        self._table = [*self._table, UserCredential(999, 2, "password", 9, 1, "cc")]
+        return "00"
+
+    async def async_read_user_table(self) -> list[UserCredential] | None:
+        return list(self._table)
+
+
+async def test_delete_user_deletes_and_rereads_when_keypad_awake(hass) -> None:
+    """Keypad already awake: no prompt, delete lands, credential count re-read."""
+    client = CredentialClient([True])
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+    events = async_capture_events(hass, EVENT_KEYPAD_PRESS_REQUIRED)
+
+    with patch("custom_components.aqara_u200.coordinator.asyncio.sleep"):
+        await coordinator.async_delete_user(2147614727)
+
+    assert client.deleted == [2147614727]
+    assert events == []  # already awake -> no keypad prompt (least imposition)
+    assert coordinator.data.credential_count == 1
+    assert coordinator.data.last_operation == "delete_user:2147614727"
+    assert coordinator.operation_in_progress is False
+
+
+async def test_delete_user_raises_when_keypad_stays_asleep(hass) -> None:
+    """Keypad never wakes: ask once, then raise instead of a silent no-op."""
+    client = CredentialClient([False])
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+    events = async_capture_events(hass, EVENT_KEYPAD_PRESS_REQUIRED)
+
+    with (
+        patch("custom_components.aqara_u200.coordinator.asyncio.sleep"),
+        pytest.raises(AqaraU200PresenceRequiredError),
+    ):
+        await coordinator.async_delete_user(2147614727)
+
+    assert client.deleted == []  # never sent while asleep
+    assert len(events) == 1  # asked for a keypad press
+    assert events[0].data["reason"] == "borrar una credencial"
+    assert coordinator.data.last_error_type == "AqaraU200PresenceRequiredError"
+    assert coordinator.operation_in_progress is False
+
+
+async def test_add_visitor_password_wakes_then_proceeds(hass) -> None:
+    """Keypad asleep then woken: prompt fires, the write lands after the wake."""
+    client = CredentialClient([False, True])  # asleep, awake after the prompt
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+    events = async_capture_events(hass, EVENT_KEYPAD_PRESS_REQUIRED)
+
+    with patch("custom_components.aqara_u200.coordinator.asyncio.sleep"):
+        await coordinator.async_add_visitor_password("730492", 1)
+
+    assert client.added == [("730492", 1)]
+    assert len(events) == 1
+    assert coordinator.data.credential_count == 3  # 2 existing + 1 added
+
+
+async def test_presence_presses_configured_wake_switch(hass) -> None:
+    """A configured keypad wake switch is turned on to wake the panel."""
+    calls = async_mock_service(hass, "switch", "turn_on")
+    client = CredentialClient([False, True])
+    entry = MockConfigEntry(
+        domain="aqara_u200",
+        data={},
+        options={CONF_KEYPAD_WAKE_SWITCH: "switch.pulsador"},
+    )
+    coordinator = AqaraU200Coordinator(hass, entry, FakeBluetoothManager(), client)
+
+    with patch("custom_components.aqara_u200.coordinator.asyncio.sleep"):
+        await coordinator.async_delete_user(2147614727)
+        await hass.async_block_till_done()
+
+    assert len(calls) == 1
+    assert calls[0].data["entity_id"] == "switch.pulsador"
+    assert client.deleted == [2147614727]

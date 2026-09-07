@@ -1,5 +1,13 @@
 # Presence handling — how to ask the user (or a fingerbot) to wake the keypad
 
+> **Status: implemented in 0.23.0** (aqara-ble ≥ 1.15.2). The `_ensure_presence`
+> ladder below runs for the credential ops (`add_visitor_password`, `delete_user`)
+> and the language OTA; a `delete_user` service and an optional **keypad wake
+> switch** option were added. This doc remains the design rationale. Still
+> deferred: exposing the access log as history and a "Keypad awake" binary sensor
+> (a slow-rotation presence read would mostly show stale/asleep — it needs a
+> smarter update strategy first).
+
 The U200 is a **two-piece** lock. Some operations need the **front keypad panel
 awake**; most don't. This doc studies *when* presence is required, *how the
 integration detects it*, and *how it should impose on the user* to get it — from

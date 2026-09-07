@@ -69,6 +69,20 @@ EVENT_KEYPAD_PRESS_REQUIRED = f"{DOMAIN}_keypad_press_required"
 #: How long the lock holds the OTA manifest open waiting for the keypad press
 #: (matches aqara_ble's default ``manifest_wait_s``). Shown in the notification.
 LANGUAGE_PRESENCE_WINDOW_SECONDS = 90
+#: Credential/front-panel ops (add/delete/table read + front-panel settings) need
+#: the keypad AWAKE at send time (confirmed live 2026-09-07: a delete sent asleep
+#: no-op'd; awake it landed). Unlike the language OTA — where the press must land
+#: mid-transfer — these just need the panel awake when the frame goes out, so a
+#: shorter wake window is enough. The coordinator polls ``read_front_connection``
+#: this often, up to the window, after asking (event + fingerbot + notification).
+DATA_PRESENCE_WINDOW_SECONDS = 30
+PRESENCE_POLL_SECONDS = 3.0
+#: Optional: the ``switch`` entity that presses the keypad (a fingerbot). When set,
+#: the coordinator turns it on directly to wake the panel for a presence-gated op,
+#: in addition to firing ``EVENT_KEYPAD_PRESS_REQUIRED`` (for the bundled
+#: blueprint). Unset → rely on the blueprint / a manual touch.
+CONF_KEYPAD_WAKE_SWITCH = "keypad_wake_switch"
+DEFAULT_KEYPAD_WAKE_SWITCH = ""
 #: Languages exposed as select options. Lowercase, matching the read side
 #: (``aqara_ble.decode_language`` returns e.g. 'es'); passed to the library's
 #: ``change_language`` as-is (its ``select_voice_pack`` matches the pack file's

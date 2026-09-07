@@ -26,3 +26,28 @@ add_visitor_password:
           min: 0
           max: 255
           mode: box
+
+delete_user:
+  name: Delete credential
+  description: >-
+    Delete a credential (and its user) from the Aqara U200 over Bluetooth. The
+    front keypad panel must be awake — the integration wakes it (or asks you)
+    first and errors if it stays asleep. Removes the whole user entry; for a
+    visitor password (its own user) that deletes exactly that PIN.
+  target:
+    entity:
+      integration: aqara_u200
+      domain: lock
+  fields:
+    user_id:
+      name: User id
+      description: >-
+        The lock's user id, as reported by the credentials sensor / the Aqara
+        cloud (a 32-bit number, e.g. 2147614727).
+      required: true
+      example: 2147614727
+      selector:
+        number:
+          min: 0
+          max: 4294967295
+          mode: box
