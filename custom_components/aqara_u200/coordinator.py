@@ -18,11 +18,14 @@ from .bluetooth import AqaraU200BluetoothManager, AqaraU200BluetoothState
 from .client import AqaraU200Client, LockSettings
 from .const import (
     BATTERY_INITIAL_DELAY_SECONDS,
+    CONF_KEYPAD_WAKE_SWITCH,
     CONF_POLL_HOURS,
+    DATA_PRESENCE_WINDOW_SECONDS,
     DEFAULT_POLL_HOURS,
     DOMAIN,
     EVENT_KEYPAD_PRESS_REQUIRED,
     LANGUAGE_PRESENCE_WINDOW_SECONDS,
+    PRESENCE_POLL_SECONDS,
     REALTIME_GAP_SECONDS,
     REALTIME_SESSION_SECONDS,
     REFRESH_GAP_SECONDS,
@@ -34,6 +37,7 @@ from .exceptions import (
     AqaraU200BluetoothUnavailableError,
     AqaraU200Error,
     AqaraU200OperationError,
+    AqaraU200PresenceRequiredError,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -567,24 +571,130 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
     async def async_add_visitor_password(self, pin: str, group_id: int = 1) -> None:
         """Serialize a visitor-password enrol over BLE (offline-capable).
 
-        Reuses the settings-write path (serialize + re-read); the credential
-        table refreshes on the next read. The front panel must be awake.
+        Credential writes are fronted by the sleeping keypad panel, so this
+        ensures the keypad is awake first (``_async_ensure_presence``) and re-reads
+        the credential table afterwards so the count updates immediately.
         """
         await self._async_run_set_operation(
             f"add_visitor_password:group{group_id}",
             lambda: self.client.async_add_visitor_password(pin, group_id),
+            require_presence="añadir una contraseña",
+            post_read="credentials",
         )
 
-    async def _async_run_set_operation(
-        self, operation: str, action: Callable[[], Awaitable[None]]
+    async def async_delete_user(self, user_id: int) -> None:
+        """Serialize a credential delete over BLE (offline-capable).
+
+        ``user_id`` is the lock's full id (as the credentials sensor / cloud
+        report it). Like the add, the keypad must be awake — this ensures presence
+        first, then re-reads the credential table so the count drops immediately.
+        A delete sent with the keypad asleep silently no-ops (confirmed live), so
+        presence is enforced rather than hoped for.
+        """
+        await self._async_run_set_operation(
+            f"delete_user:{user_id}",
+            lambda: self.client.async_delete_user(user_id),
+            require_presence="borrar una credencial",
+            post_read="credentials",
+        )
+
+    def _keypad_wake_switch(self) -> str | None:
+        """Return the configured keypad-wake switch entity id, or None."""
+        switch = self._entry.options.get(CONF_KEYPAD_WAKE_SWITCH, "")
+        return switch or None
+
+    async def _async_request_keypad_press(
+        self, *, reason: str, window: float, text: str
+    ) -> str:
+        """Ask for a keypad press: fire the event, press the wake switch, notify.
+
+        Fires ``aqara_u200_keypad_press_required`` (the bundled fingerbot blueprint
+        listens for it), turns on a configured wake switch directly if one is set,
+        and raises a persistent notification for the human fallback. Returns the
+        notification id so the caller dismisses it when done.
+        """
+        self.hass.bus.async_fire(
+            EVENT_KEYPAD_PRESS_REQUIRED,
+            {
+                "entry_id": self._entry.entry_id,
+                "reason": reason,
+                "window_seconds": int(window),
+            },
+        )
+        switch = self._keypad_wake_switch()
+        if switch is not None:
+            try:
+                await self.hass.services.async_call(
+                    "switch", "turn_on", {"entity_id": switch}, blocking=False
+                )
+            except Exception as err:  # noqa: BLE001 - best-effort auto-wake
+                _LOGGER.debug(
+                    "keypad wake switch %s failed (%s)", switch, type(err).__name__
+                )
+        notification_id = f"{DOMAIN}_keypad_{self._entry.entry_id}"
+        persistent_notification.async_create(
+            self.hass,
+            text,
+            title="Aqara U200 — pulsa el teclado",
+            notification_id=notification_id,
+        )
+        return notification_id
+
+    async def _async_ensure_presence(
+        self, reason: str, *, window: float = DATA_PRESENCE_WINDOW_SECONDS
     ) -> None:
-        """Run one settings-write operation, then re-read the config burst.
+        """Make the front keypad panel awake for a presence-gated op, or raise.
+
+        Least-imposition ladder: (0) if the keypad already reports present, return
+        silently — no prompt; (1/2) otherwise ask (event + fingerbot switch +
+        notification) and poll ``read_front_connection`` until it wakes; (3) if the
+        window elapses still asleep, raise :class:`AqaraU200PresenceRequiredError`
+        rather than letting the write silently no-op. Runs inside the operation
+        lock (the client reads open their own short BLE sessions).
+        """
+        if await self.client.async_read_front_connection() is True:
+            return
+        text = (
+            f"El Aqara U200 necesita el teclado despierto para {reason}. Pulsa una "
+            f"tecla en los próximos {int(window)} s (o deja que lo haga tu "
+            "automatización del pulsador)."
+        )
+        notification_id = await self._async_request_keypad_press(
+            reason=reason, window=window, text=text
+        )
+        try:
+            attempts = max(1, int(window / PRESENCE_POLL_SECONDS))
+            for _ in range(attempts):
+                await asyncio.sleep(PRESENCE_POLL_SECONDS)
+                if await self.client.async_read_front_connection() is True:
+                    return
+            raise AqaraU200PresenceRequiredError(
+                f"Aqara U200 {reason}: the keypad stayed asleep — "
+                "press a key on the keypad and try again"
+            )
+        finally:
+            persistent_notification.async_dismiss(self.hass, notification_id)
+
+    async def _async_run_set_operation(
+        self,
+        operation: str,
+        action: Callable[[], Awaitable[None]],
+        *,
+        require_presence: str | None = None,
+        presence_window: float = DATA_PRESENCE_WINDOW_SECONDS,
+        post_read: str = "config",
+    ) -> None:
+        """Run one settings-write operation, then re-read to confirm.
 
         Unlike ``_async_run_operation`` (lock/unlock), a SET write has no bolt
-        position to observe — it confirms itself by re-reading the same
-        ``config`` burst the SET belongs to, so the entity ends up showing
-        what the lock actually reports now, not an optimistic guess of what
-        the write probably did.
+        position to observe — it confirms itself by re-reading the value it
+        touched (``post_read``: ``config`` for settings, ``credentials`` for a
+        credential add/delete), so the entity ends up showing what the lock
+        actually reports now, not an optimistic guess of what the write did.
+
+        ``require_presence`` (a human-readable reason) gates the write on the front
+        keypad panel being awake — ensured before ``action`` runs, and raised as
+        :class:`AqaraU200PresenceRequiredError` if it never wakes.
         """
         self._preempt_listen()
         async with self._operation_lock:
@@ -600,10 +710,14 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             self.async_set_updated_data(self._build_snapshot(state))
 
             try:
+                if require_presence is not None:
+                    await self._async_ensure_presence(
+                        require_presence, window=presence_window
+                    )
                 await action()
-                value = await self.client.async_read_settings()
+                value = await self._async_read_one(post_read)
                 if value is not None:
-                    self._apply_read("config", value)
+                    self._apply_read(post_read, value)
             except AqaraU200AuthenticationError as err:
                 self._last_error_type = type(err).__name__
                 self._entry.async_start_reauth(self.hass)

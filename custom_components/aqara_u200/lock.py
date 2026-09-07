@@ -18,6 +18,7 @@ from .coordinator import AqaraU200Coordinator
 from .exceptions import AqaraU200Error
 
 SERVICE_ADD_VISITOR_PASSWORD = "add_visitor_password"
+SERVICE_DELETE_USER = "delete_user"
 
 
 async def async_setup_entry(
@@ -43,6 +44,14 @@ async def async_setup_entry(
             vol.Optional("group_id", default=1): vol.All(int, vol.Range(min=0, max=255)),
         },
         "async_add_visitor_password",
+    )
+    # Entity service: delete a credential (and its user) by the lock's user id.
+    platform.async_register_entity_service(
+        SERVICE_DELETE_USER,
+        {
+            vol.Required("user_id"): vol.All(int, vol.Range(min=0, max=0xFFFFFFFF)),
+        },
+        "async_delete_user",
     )
 
 
@@ -109,9 +118,23 @@ class AqaraU200Lock(CoordinatorEntity[AqaraU200Coordinator], LockEntity):
         """Enrol a visitor PIN over BLE (service target: this lock).
 
         Offline-capable (uses the library's ``add_visitor_password``). The PIN is
-        an even number of digits; the front keypad panel must be awake.
+        an even number of digits; the front keypad panel must be awake (the
+        coordinator wakes it / asks you first).
         """
         try:
             await self.coordinator.async_add_visitor_password(pin, group_id)
+        except AqaraU200Error as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def async_delete_user(self, user_id: int) -> None:
+        """Delete a credential + its user over BLE (service target: this lock).
+
+        ``user_id`` is the lock's full user id (as the credentials sensor / cloud
+        report it). Offline-capable; the front keypad panel must be awake (the
+        coordinator wakes it / asks you first, and errors if it stays asleep
+        instead of silently doing nothing).
+        """
+        try:
+            await self.coordinator.async_delete_user(user_id)
         except AqaraU200Error as err:
             raise HomeAssistantError(str(err)) from err

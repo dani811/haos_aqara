@@ -122,6 +122,14 @@ class AqaraU200Client(Protocol):
         """Enrol a visitor PIN over BLE; return the lock's reply hex or None."""
         ...
 
+    async def async_delete_user(self, user_id: int) -> str | None:
+        """Delete a user + all their credentials over BLE; reply hex or None."""
+        ...
+
+    async def async_read_front_connection(self) -> bool | None:
+        """Read whether the front keypad panel is awake (True/False), None if unreadable."""
+        ...
+
     async def async_lock(self) -> bool | None:
         """Lock the device; return the real bolt position if observed."""
         ...
@@ -340,6 +348,28 @@ class AqaraU200BleClientAdapter:
         return await self._async_one_read(
             lambda c: c.add_visitor_password(pin, group_id)
         )
+
+    async def async_delete_user(self, user_id: int) -> str | None:
+        """Delete a user + all their credentials over BLE (offline-capable).
+
+        Sends the USER-family ``DEL_USER`` frame (``delete_user``); ``user_id`` is
+        the lock's full 32-bit id (as ``read_user_table`` / the cloud report it).
+        Returns the lock's reply hex, which is often ``None`` even on success (the
+        reply is not opcode-correlated — verify by re-reading the table). Like the
+        add, the credential store is fronted by the sleeping keypad panel, so it
+        must be awake — a delete sent asleep silently no-ops (confirmed live).
+        """
+        return await self._async_one_read(lambda c: c.delete_user(user_id))
+
+    async def async_read_front_connection(self) -> bool | None:
+        """Read whether the front keypad panel is awake (GET_FRONT_CONNECTION 0xdd).
+
+        Returns ``True`` (present/awake), ``False`` (asleep), or ``None`` if the
+        lock didn't answer. Served by the always-on back panel, so it reads with
+        the keypad asleep — this is what lets the coordinator confirm a wake before
+        running a presence-gated op instead of firing blindly.
+        """
+        return await self._async_one_read(lambda c: c.read_front_connection())
 
     async def async_lock(self) -> bool | None:
         """Run one confirmed lock operation without actuation retries."""
