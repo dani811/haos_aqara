@@ -25,7 +25,7 @@ The U200 is a **Bluetooth** lock (no Wi-Fi). All control happens over BLE. The o
 ### What is *not* possible without the cloud / hardware
 - **Faking the LTMK.** It is a random per-device key established at the factory/app bind and validated by the lock; a wrong key is rejected. It must be the real one, from your account.
 - **A fully cloud-free first setup.** Identifying the lock and getting the LTMK both require one authenticated cloud read.
-- **Changing the spoken language without the physical keypad.** The voice pack is streamed live to the lock's **front keypad panel**, which is battery-powered and sleeps; the lock only accepts the OTA while that panel is physically awake. This "presence gate" is a **hardware** constraint (proven in the lock firmware), not something the software can bypass — a physical keypad touch (or a fingerbot pressing it) is required for that one operation. Everything else needs no keypad.
+- **Operations served by the sleeping front keypad panel, without waking it.** The voice-OTA language pack streams to that panel's speaker; the **credential table** (list/add/delete) and **front-panel settings** are fronted by it too. It is battery-powered and **sleeps**, and the lock only serves those operations while it is physically awake. This "presence gate" is a **hardware** constraint (the two panels have separate power; proven in the firmware for the voice OTA, confirmed live for credential writes), not something the software can bypass — a physical keypad touch (or a fingerbot pressing it) is required. Lock/unlock, bolt state, battery and the **access-log history** need no keypad. See [Presence handling](docs/presence-handling.md).
 
 ---
 
@@ -36,12 +36,57 @@ The U200 is a **Bluetooth** lock (no Wi-Fi). All control happens over BLE. The o
 | Lock / unlock | ✅ | ❌ | Back-panel motor; instant |
 | Read bolt state / battery | ✅ | ❌ | Decrypted locally |
 | Read door type / turn-assist / pull-spring | ✅ | ❌ | Back-panel settings |
-| Read volume / alert / language / credential table | ✅ | ⚠️ yes | These live in the front panel; if asleep they read as *unknown* |
-| Write settings (volumes, timers, alarms) | ✅ | ⚠️ yes | Same front-panel wake caveat |
-| Enrol a visitor password | ✅ | ⚠️ yes | `aqara-ble` `add_visitor_password`; validated live (a real PIN opened the door) |
+| Read **access log** (history) | ✅ | ❌ | Lives in the always-on back panel — a keypad-free history source (`aqara-ble` `read_access_log`) |
+| Read volume / alert / language / credential table | ✅ | ✅ yes | Fronted by the keypad panel; if asleep they read as *unknown* / time out |
+| Write settings (volumes, timers, alarms) | ✅ | ✅ yes | Same front-panel wake requirement |
+| Enrol a visitor password | ✅ | ✅ yes | `aqara-ble` `add_visitor_password`; validated live (a real PIN opened the door) |
+| **Delete a credential** | ✅ | ✅ yes | `aqara-ble` `delete_user`; verified live (removed the target, table 7→6). A delete sent while the keypad slept had **no effect** |
 | Change spoken language (voice OTA) | ⚠️ cloud pack download | ✅ **required** | Needs the CDN pack **and** a physical keypad press during the transfer |
 
 Legend: ✅ yes · ❌ no · ⚠️ conditional.
+
+> **Confirmed live 2026-09-07:** credential **writes** (add/delete) and the
+> table/front-panel reads need the keypad awake — not just the voice OTA. The
+> credential database is fronted by the sleeping keypad panel. See
+> [Presence handling](docs/presence-handling.md) for how the integration detects
+> this and asks you (or a fingerbot) to wake it.
+
+---
+
+## Presence — when the lock needs the keypad awake
+
+The U200 is two panels: the **always-on back panel** (motor, state, battery,
+access log) and a **front keypad panel** that runs on its own AAA batteries and
+**sleeps**. A handful of operations are served by that sleeping panel and only
+work while it is **awake** (woken by a physical touch, or a fingerbot pressing it,
+for ~45 s): the **credential table** (list/add/delete), **front-panel settings**
+(system volume, language), and the **voice-OTA language change**. Everything else
+— lock/unlock, bolt state, battery, door type, access-log history — needs no
+keypad and works any time.
+
+**How the integration handles it (least-imposition ladder):**
+
+1. **Check first.** It asks the lock whether the keypad is awake
+   (`read_front_connection`). If it already is, the operation just runs — no
+   prompt.
+2. **Auto-wake, if you have a fingerbot.** It fires the
+   `aqara_u200_keypad_press_required` event; the bundled **blueprint**
+   (`blueprints/automation/aqara_u200/`) presses your configured keypad
+   switch. Zero interaction.
+3. **Ask you.** With no fingerbot (or if the press didn't register in time), it
+   raises a **persistent notification**: *"touch the keypad in the next N
+   seconds"*. One touch authorises the operation.
+4. **Fail clearly.** If the window elapses with the panel still asleep, the
+   operation errors with the reason instead of **silently doing nothing** — so a
+   credential write never looks like it worked when it didn't.
+
+Today this flow is wired for the **language change**; generalising it to the
+credential operations (add/delete) is the plan documented in
+[docs/presence-handling.md](docs/presence-handling.md), which also studies the
+detection, the escalation options, and the config for automatic wake.
+
+**To make waking automatic:** fit an Aqara fingerbot (or any BLE/Zigbee button)
+over the keypad, expose it as a `switch`, and attach the bundled blueprint to it.
 
 ---
 
