@@ -149,4 +149,4 @@ custom_components/aqara_u200  (coordinator + client adapter)
 
 ## Status
 
-Runtime uses HA Bluetooth routing with a fresh `bleak-retry-connector` connection per action via `U200Client.from_gatt()`; lock state is not optimistic. Requires **`aqara-ble`** on PyPI (see `manifest.json` for the pinned version). Offline mode and the credentials sensor are available; a physical Bluetooth Proxy in range of the lock is recommended for reliable operation.
+Runtime uses HA Bluetooth routing with a fresh `bleak-retry-connector` connection per action via `U200Client.from_gatt()`; lock state is not optimistic. Requires **`aqara-ble`** on PyPI (see `manifest.json` for the pinned version). Offline mode, the credentials sensor, credential add/delete services, and presence handling (wake-or-ask before front-panel operations) are available; a physical Bluetooth Proxy in range of the lock is recommended for reliable operation.
