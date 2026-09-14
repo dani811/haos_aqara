@@ -158,7 +158,13 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
         """Discovered lock: present the setup-mode menu."""
         if self._discovered_address is None:
             return self.async_abort(reason="discovery_info_missing")
-        return self.async_show_menu(step_id="confirm", menu_options=_MENU_OPTIONS)
+        # The confirm menu title uses {name}; a menu still needs the placeholder or
+        # the frontend throws a formatjs MISSING_VALUE for it.
+        return self.async_show_menu(
+            step_id="confirm",
+            menu_options=_MENU_OPTIONS,
+            description_placeholders={"name": self._discovered_name},
+        )
 
     @override
     async def async_step_user(
