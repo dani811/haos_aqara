@@ -246,6 +246,19 @@ def build_cloud_auth(config: Mapping[str, Any]) -> CloudAuthManager:
     )
 
 
+def parse_ltmk(value: str) -> bytes:
+    """Parse a user-supplied LTMK hex string into 32 bytes.
+
+    Accepts optional whitespace/`0x`/colons. Raises ``ValueError`` if it is not
+    exactly 32 bytes of hex — used by the local setup path to validate input.
+    """
+    cleaned = value.strip().lower().removeprefix("0x").replace(":", "").replace(" ", "")
+    raw = bytes.fromhex(cleaned)  # raises ValueError on non-hex
+    if len(raw) != 32:
+        raise ValueError(f"LTMK must be 32 bytes (64 hex chars), got {len(raw)}")
+    return raw
+
+
 def is_invalid_auth_error(err: BaseException) -> bool:
     """Return whether an exception chain contains Aqara invalid-auth code 810."""
     current: BaseException | None = err
@@ -278,6 +291,18 @@ async def async_resolve_device_id(
     return await hass.async_add_executor_job(partial(auth.resolve_device_id, mac=mac))
 
 
+async def async_fetch_ltmk(
+    hass: HomeAssistant, config: Mapping[str, Any], device_id: str
+) -> bytes:
+    """Fetch the account LTMK once from the cloud (cloud-cutter setup path).
+
+    Runs off the event loop. Returns the 32-byte key so the entry can operate
+    fully local afterwards. Raises on auth/network failure.
+    """
+    auth = build_cloud_auth(config)
+    return await hass.async_add_executor_job(auth.fetch_ltmk, device_id)
+
+
 class AqaraU200BleClientAdapter:
     """Adapt HA-managed Bluetooth connections to ``aqara-ble``."""
 
@@ -285,22 +310,28 @@ class AqaraU200BleClientAdapter:
         self,
         hass: HomeAssistant,
         bluetooth_manager: AqaraU200BluetoothManager,
-        auth: CloudAuthManager,
+        auth: CloudAuthManager | None,
         device_id: str,
         region: str,
+        ltmk: bytes | None = None,
     ) -> None:
         """Initialize an adapter for one config entry.
 
-        Holds only one piece of state: ``_ltmk`` — the offline session master
-        key, ``None`` until ``async_enable_offline()`` fetches it (opt-in). While
-        it is ``None`` every operation logs in through the cloud, unchanged.
+        ``auth`` is the cloud credential manager, or ``None`` in the pure-local
+        setup (no Aqara account). ``ltmk`` seeds the offline session master key:
+        when provided (local / cloud-cutter setup) BLE sessions derive locally
+        from the start; when ``None`` the adapter uses the cloud path until
+        ``async_enable_offline()`` fetches the key (opt-in). ``auth=None`` and
+        ``ltmk=None`` together is invalid — the caller must supply at least one.
         """
+        if auth is None and ltmk is None:
+            raise ValueError("adapter needs cloud auth or a local LTMK")
         self._hass = hass
         self._bluetooth_manager = bluetooth_manager
         self._auth = auth
         self._device_id = device_id
         self._region = region
-        self._ltmk: bytes | None = None
+        self._ltmk: bytes | None = ltmk
 
     @property
     def control_enabled(self) -> bool:
@@ -319,6 +350,10 @@ class AqaraU200BleClientAdapter:
         ``False``) so enabling offline can never break control. The key is kept
         only in memory (never persisted).
         """
+        if self._ltmk is not None:
+            return True  # already offline (local / cloud-cutter setup seeded it)
+        if self._auth is None:
+            return False  # no cloud auth to fetch the key with
         try:
             ltmk = await self._hass.async_add_executor_job(
                 self._auth.fetch_ltmk, self._device_id

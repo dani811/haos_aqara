@@ -336,12 +336,17 @@ async def test_async_set_auto_lockup_relock_delay_sends_the_confirmed_frame() ->
 
 
 async def test_async_set_auto_lock_on_close_delay_sends_the_confirmed_frame() -> None:
-    """async_set_auto_lock_on_close_delay() sends the byte-confirmed 0xd5 SET frame."""
+    """async_set_auto_lock_on_close_delay() sends the 0xAD SET frame.
+
+    Corrected: the on-close/auto-lock timer is opcode 0xAD (automatic_locking),
+    proven live distinct from 0xD5 delay_to_lock (aqara-ble E56/E57). 5s ->
+    ad050000ee (computed Mijia CRC). Needs aqara-ble with that fix (>1.16.0).
+    """
     manager = Mock()
     manager.async_get_ble_device.return_value = object()
     connection = SimpleNamespace(disconnect=AsyncMock())
     protocol_client = SimpleNamespace(
-        read_burst=AsyncMock(return_value=[("d5050001fe", "d5000c")])
+        read_burst=AsyncMock(return_value=[("ad050000ee", "ad000c")])
     )
 
     with (
@@ -356,7 +361,7 @@ async def test_async_set_auto_lock_on_close_delay_sends_the_confirmed_frame() ->
     ):
         await _adapter(manager).async_set_auto_lock_on_close_delay(5)
 
-    protocol_client.read_burst.assert_awaited_once_with(["01:d5050001fe"])
+    protocol_client.read_burst.assert_awaited_once_with(["01:ad050000ee"])
 
 
 async def test_async_enable_auxiliary_locking_on_close_sends_the_confirmed_frame() -> None:

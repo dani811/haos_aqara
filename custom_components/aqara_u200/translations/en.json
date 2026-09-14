@@ -3,24 +3,51 @@
     "step": {
       "user": {
         "title": "Set up Aqara U200",
-        "description": "Configure the lock manually. Bluetooth discovery is preferred when available.",
+        "description": "Choose how this lock connects.",
+        "menu_options": {
+          "cloud": "Cloud (Aqara account + password)",
+          "local": "Local (no cloud; paste the lock key)",
+          "cloud_cutter": "Cloud once, then local (fetch the key, then cut the cloud)"
+        }
+      },
+      "confirm": {
+        "title": "Set up {name}",
+        "description": "Choose how this lock connects.",
+        "menu_options": {
+          "cloud": "Cloud (Aqara account + password)",
+          "local": "Local (no cloud; paste the lock key)",
+          "cloud_cutter": "Cloud once, then local (fetch the key, then cut the cloud)"
+        }
+      },
+      "cloud": {
+        "title": "Aqara U200 — Cloud",
+        "description": "The integration logs in through the Aqara cloud for each Bluetooth session. You can switch to offline (cloud-cut) later in Options.",
         "data": {
           "address": "Bluetooth address",
-          "device_id": "Aqara device ID",
           "region": "Aqara region",
           "account": "Aqara account (email or phone)",
           "password": "Aqara password",
           "realtime_state": "Real-time BLE state (uses more lock battery)"
         }
       },
-      "confirm": {
-        "title": "Set up {name}",
-        "description": "Confirm the discovered lock and provide its Aqara device ID and your account.",
+      "cloud_cutter": {
+        "title": "Aqara U200 — Cloud once, then local",
+        "description": "Your account is used ONCE now to fetch the lock's device ID and long-term key, then the integration operates fully over Bluetooth with no further cloud calls.",
         "data": {
-          "device_id": "Aqara device ID",
+          "address": "Bluetooth address",
           "region": "Aqara region",
           "account": "Aqara account (email or phone)",
           "password": "Aqara password",
+          "realtime_state": "Real-time BLE state (uses more lock battery)"
+        }
+      },
+      "local": {
+        "title": "Aqara U200 — Local",
+        "description": "Fully offline: no Aqara account is used. Provide the lock's Bluetooth address, its Aqara device ID, and its 32-byte long-term key (LTMK) as hex. See the docs for how to obtain the LTMK.",
+        "data": {
+          "address": "Bluetooth address",
+          "device_id": "Aqara device ID (lumi.* / matt.*)",
+          "ltmk": "Long-term key (LTMK), 64 hex characters",
           "realtime_state": "Real-time BLE state (uses more lock battery)"
         }
       },
@@ -36,7 +63,9 @@
     "error": {
       "invalid_auth": "Aqara rejected these credentials.",
       "cannot_connect": "Could not validate the credentials with Aqara Cloud.",
-      "no_device": "No Aqara lock could be found on this account for this device."
+      "no_device": "No Aqara lock could be found on this account for this device.",
+      "invalid_ltmk": "The long-term key must be 32 bytes (64 hex characters).",
+      "ltmk_fetch": "Could not fetch the lock key from the cloud. Check the account and try again."
     },
     "abort": {
       "already_configured": "This lock is already configured.",
