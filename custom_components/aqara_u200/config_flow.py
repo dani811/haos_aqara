@@ -199,8 +199,10 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
             data[CONF_ADDRESS] = address
             error = await _async_auth_error(self.hass, data)
-            device_id: str | None = None
-            if not error:
+            # A device id the user typed in wins: it skips the account lookup
+            # (``/dev/query``), which the Aqara cloud does not always answer.
+            device_id: str | None = data.get(CONF_DEVICE_ID) or None
+            if not error and device_id is None:
                 device_id, error = await _async_resolve_device_id(
                     self.hass, data, address
                 )
@@ -322,7 +324,13 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
 
     # ── schemas ──────────────────────────────────────────────────────────────
     def _cloud_schema(self, manual: bool) -> vol.Schema:
-        """Cloud / cloud-cutter fields (address only when not discovered)."""
+        """Cloud / cloud-cutter fields (address only when not discovered).
+
+        ``device_id`` is optional: left blank the flow tries to auto-detect it
+        from the account, but that lookup (``/dev/query``) is not always
+        available, so the field lets the user paste the ``matt.<…>`` DID (visible
+        in the Aqara app) to skip auto-detection entirely.
+        """
         fields: dict[vol.Marker, Any] = {}
         if manual:
             fields[vol.Required(CONF_ADDRESS)] = _NON_EMPTY_TEXT
@@ -330,6 +338,7 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
             SUPPORTED_REGIONS
         )
         fields.update(_auth_schema())
+        fields[vol.Optional(CONF_DEVICE_ID)] = _NON_EMPTY_TEXT
         fields[vol.Required(CONF_REALTIME_STATE, default=DEFAULT_REALTIME_STATE)] = bool
         return vol.Schema(fields)
 

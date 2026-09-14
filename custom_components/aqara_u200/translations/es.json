@@ -27,7 +27,11 @@
           "region": "Región Aqara",
           "account": "Cuenta Aqara (correo o teléfono)",
           "password": "Contraseña de Aqara",
+          "device_id": "ID de dispositivo (opcional)",
           "realtime_state": "Estado BLE en tiempo real (gasta más batería de la cerradura)"
+        },
+        "data_description": {
+          "device_id": "Déjalo en blanco para detectarlo automáticamente. Si la detección falla, pega aquí el ID de dispositivo (lumi.* / matt.*) que aparece en la app de Aqara."
         }
       },
       "cloud_cutter": {
@@ -38,7 +42,11 @@
           "region": "Región Aqara",
           "account": "Cuenta Aqara (correo o teléfono)",
           "password": "Contraseña de Aqara",
+          "device_id": "ID de dispositivo (opcional)",
           "realtime_state": "Estado BLE en tiempo real (gasta más batería de la cerradura)"
+        },
+        "data_description": {
+          "device_id": "Déjalo en blanco para detectarlo automáticamente. Si la detección falla, pega aquí el ID de dispositivo (lumi.* / matt.*) que aparece en la app de Aqara."
         }
       },
       "local": {
@@ -63,7 +71,7 @@
     "error": {
       "invalid_auth": "Aqara ha rechazado estas credenciales.",
       "cannot_connect": "No se pudieron validar las credenciales con Aqara Cloud.",
-      "no_device": "No se encontró ninguna cerradura Aqara en esta cuenta para este dispositivo.",
+      "no_device": "No se pudo detectar automáticamente la cerradura en esta cuenta. Introduce el ID de dispositivo (lumi.* / matt.*) manualmente en el campo de arriba; lo encuentras en la app de Aqara.",
       "invalid_ltmk": "La clave maestra debe ser de 32 bytes (64 caracteres hex).",
       "ltmk_fetch": "No se pudo obtener la clave de la cerradura desde la nube. Revisa la cuenta e inténtalo de nuevo."
     },
