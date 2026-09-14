@@ -101,7 +101,7 @@ switch** in the integration options or attach the bundled blueprint to it.
 |---|---|---|---|
 | **Cloud** (cloud-assisted) | Aqara **account + password** | Every operation | Device id auto-resolved; each op fetches fresh session material from the cloud. Offline **off**. |
 | **Cloud-cutter** | Aqara **account + password** | **Once**, at setup | Fetches the **LTMK** once, stores it, and turns **offline on**. After setup, control is 100% local (cloud only for the voice-OTA language change). *Recommended for local-first users who still have their account.* |
-| **Local** (no cloud) | Lock **address + device id + LTMK** (hex) | **Never** | You paste an LTMK obtained out-of-band (a prior cloud read, or the offline [`account_bind`](https://github.com/dani811/Aqara) derivation). Fully cloud-free setup. Offline **on**. |
+| **Local** (no cloud) | Lock **address + device id + LTMK** (hex) | **Never** | You paste an LTMK obtained out-of-band (a prior cloud read is the practical source — the non-destructive bind derivation does **not** yield the current pairing's key). Fully cloud-free setup. Offline **on**. |
 
 > Only **account + password** are ever collected in the cloud/cloud-cutter modes — the app id/keys and per-install ids are handled by the library. The LTMK, once obtained, is kept **in memory only** and never written to disk.
 
