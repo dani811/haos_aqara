@@ -27,7 +27,11 @@
           "region": "Aqara region",
           "account": "Aqara account (email or phone)",
           "password": "Aqara password",
+          "device_id": "Device ID (optional)",
           "realtime_state": "Real-time BLE state (uses more lock battery)"
+        },
+        "data_description": {
+          "device_id": "Leave blank to auto-detect. If detection fails, paste the device ID (lumi.* / matt.*) shown in the Aqara app."
         }
       },
       "cloud_cutter": {
@@ -38,7 +42,11 @@
           "region": "Aqara region",
           "account": "Aqara account (email or phone)",
           "password": "Aqara password",
+          "device_id": "Device ID (optional)",
           "realtime_state": "Real-time BLE state (uses more lock battery)"
+        },
+        "data_description": {
+          "device_id": "Leave blank to auto-detect. If detection fails, paste the device ID (lumi.* / matt.*) shown in the Aqara app."
         }
       },
       "local": {
@@ -63,7 +71,7 @@
     "error": {
       "invalid_auth": "Aqara rejected these credentials.",
       "cannot_connect": "Could not validate the credentials with Aqara Cloud.",
-      "no_device": "No Aqara lock could be found on this account for this device.",
+      "no_device": "Could not auto-detect the lock on this account. Enter the device ID (lumi.* / matt.*) manually in the field above; you can find it in the Aqara app.",
       "invalid_ltmk": "The long-term key must be 32 bytes (64 hex characters).",
       "ltmk_fetch": "Could not fetch the lock key from the cloud. Check the account and try again."
     },
