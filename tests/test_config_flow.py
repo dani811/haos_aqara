@@ -69,6 +69,27 @@ async def test_cloud_flow_validates_and_auto_resolves_device_id(hass) -> None:
     resolve.assert_awaited_once()
 
 
+async def test_cloud_flow_uses_manual_device_id_and_skips_resolution(hass) -> None:
+    """A device id typed in cloud mode is used as-is; auto-resolution is skipped."""
+    with (
+        patch(
+            "custom_components.aqara_u200.config_flow.async_validate_cloud_auth",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.aqara_u200.config_flow.async_resolve_device_id",
+            new=AsyncMock(return_value=RESOLVED_DEVICE_ID),
+        ) as resolve,
+    ):
+        result = await _flow(hass).async_step_cloud(
+            {**USER_INPUT, CONF_DEVICE_ID: "matt.manual0000"}
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_DEVICE_ID] == "matt.manual0000"
+    resolve.assert_not_awaited()
+
+
 async def test_cloud_flow_maps_invalid_auth_without_raw_details(hass) -> None:
     """Aqara rejection details are reduced to a translated flow error key."""
     error = CloudServiceError(code=810, message="raw-password", endpoint="raw-endpoint")

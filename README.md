@@ -95,10 +95,18 @@ switch** in the integration options or attach the bundled blueprint to it.
 
 1. Install via HACS (custom repository) or copy `custom_components/aqara_u200` into your HA config.
 2. Make sure the lock is reachable by a Home Assistant Bluetooth adapter or a **Bluetooth Proxy** in range.
-3. Add the integration — it discovers the lock over Bluetooth, then asks for your **Aqara account + password** (used to validate credentials and resolve the device id; only account + password are needed — the app id/keys and per-install ids are handled by the library).
+3. Add the integration — it discovers the lock over Bluetooth, then offers a **three-way mode menu** (you pick how the session keys are sourced):
+
+| Menu choice | You provide | Cloud used | Result |
+|---|---|---|---|
+| **Cloud** (cloud-assisted) | Aqara **account + password** | Every operation | Device id auto-resolved; each op fetches fresh session material from the cloud. Offline **off**. |
+| **Cloud-cutter** | Aqara **account + password** | **Once**, at setup | Fetches the **LTMK** once, stores it, and turns **offline on**. After setup, control is 100% local (cloud only for the voice-OTA language change). *Recommended for local-first users who still have their account.* |
+| **Local** (no cloud) | Lock **address + device id + LTMK** (hex) | **Never** | You paste an LTMK obtained out-of-band (a prior cloud read, or the offline [`account_bind`](https://github.com/dani811/Aqara) derivation). Fully cloud-free setup. Offline **on**. |
+
+> Only **account + password** are ever collected in the cloud/cloud-cutter modes — the app id/keys and per-install ids are handled by the library. The LTMK, once obtained, is kept **in memory only** and never written to disk.
 
 ### Options (per lock)
-- **Offline mode** — opt-in, **off by default**. When on, the LTMK is fetched once at startup and control runs cloud-free (see the table above).
+- **Offline mode** — set by the mode you chose at setup (on for cloud-cutter/local, off for cloud); can be toggled here. When on, control derives its session from the LTMK with no per-operation cloud call. If the one-time LTMK fetch fails, the integration **falls back to the cloud path** — enabling offline can never break control.
 - **Real-time BLE state** — hold one Bluetooth connection open so the lock's own push reports (open/close, key/keypad/manual) arrive instantly, no polling. Costs a little lock battery.
 - **Background poll (hours)** — periodically read battery + settings. `0` = off (on-demand only, via the Refresh button).
 - **Keypad wake switch** — optional. A `switch` (e.g. a fingerbot on the keypad) the integration turns on to wake the sleeping front panel for a presence-gated operation. Leave empty to rely on the bundled blueprint or a manual touch.
