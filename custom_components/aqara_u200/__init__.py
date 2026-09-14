@@ -12,7 +12,9 @@ from homeassistant.helpers.typing import ConfigType
 from .bluetooth import AqaraU200BluetoothManager
 from .client import AqaraU200BleClientAdapter, AqaraU200Client, build_cloud_auth
 from .const import (
+    CONF_ACCOUNT,
     CONF_DEVICE_ID,
+    CONF_LTMK,
     CONF_OFFLINE_MODE,
     CONF_POLL_HOURS,
     CONF_REALTIME_STATE,
@@ -67,17 +69,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: AqaraU200ConfigEntry) ->
     address = entry.data[CONF_ADDRESS]
     bluetooth_manager = AqaraU200BluetoothManager(hass, address)
 
-    try:
-        auth = build_cloud_auth(entry.data)
-    except KeyError as err:
+    # Local mode has no cloud account; cloud / cloud-cutter modes do. Cloud-cutter
+    # and the offline option also carry a stored LTMK for local session derivation.
+    ltmk_hex = entry.data.get(CONF_LTMK)
+    ltmk = bytes.fromhex(ltmk_hex) if ltmk_hex else None
+    auth = None
+    if CONF_ACCOUNT in entry.data:
+        try:
+            auth = build_cloud_auth(entry.data)
+        except KeyError as err:
+            raise ConfigEntryAuthFailed(
+                "Aqara cloud credentials are incomplete; reauthentication is required"
+            ) from err
+    elif ltmk is None:
         raise ConfigEntryAuthFailed(
-            "Aqara cloud credentials are incomplete; reauthentication is required"
-        ) from err
+            "Aqara entry has neither cloud credentials nor a local LTMK"
+        )
 
     device_id = entry.data[CONF_DEVICE_ID]
     region = entry.data.get(CONF_REGION, DEFAULT_REGION)
     client: AqaraU200Client = AqaraU200BleClientAdapter(
-        hass, bluetooth_manager, auth, device_id, region
+        hass, bluetooth_manager, auth, device_id, region, ltmk=ltmk
     )
     coordinator = AqaraU200Coordinator(hass, entry, bluetooth_manager, client)
 

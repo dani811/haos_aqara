@@ -1,4 +1,14 @@
-"""Config flow for Aqara U200 BLE."""
+"""Config flow for Aqara U200 BLE.
+
+Setup offers three modes (a menu on both manual add and Bluetooth discovery):
+
+- **cloud**: Aqara account + password; sessions log in through the cloud (current
+  behaviour). The offline toggle in Options can later fetch the LTMK once.
+- **local**: paste the lock's MAC + device id + 32-byte LTMK; the integration
+  never contacts the cloud. For users who already hold the LTMK.
+- **cloud_cutter**: account + password used ONCE at setup to fetch the device id +
+  LTMK, then the entry operates fully local (offline on by default).
+"""
 
 from __future__ import annotations
 
@@ -28,18 +38,22 @@ from homeassistant.helpers.selector import (
 
 from .client import (
     AUTH_CONFIG_KEYS,
+    async_fetch_ltmk,
     async_resolve_device_id,
     async_validate_cloud_auth,
     is_invalid_auth_error,
+    parse_ltmk,
 )
 from .const import (
     CONF_ACCOUNT,
     CONF_DEVICE_ID,
     CONF_KEYPAD_WAKE_SWITCH,
+    CONF_LTMK,
     CONF_OFFLINE_MODE,
     CONF_POLL_HOURS,
     CONF_REALTIME_STATE,
     CONF_REGION,
+    CONF_SETUP_MODE,
     DEFAULT_KEYPAD_WAKE_SWITCH,
     DEFAULT_OFFLINE_MODE,
     DEFAULT_POLL_HOURS,
@@ -47,6 +61,9 @@ from .const import (
     DEFAULT_REGION,
     DOMAIN,
     MAX_POLL_HOURS,
+    SETUP_MODE_CLOUD,
+    SETUP_MODE_CLOUD_CUTTER,
+    SETUP_MODE_LOCAL,
     SUPPORTED_REGIONS,
 )
 
@@ -58,15 +75,14 @@ _PASSWORD_SELECTOR = TextSelector(
     )
 )
 _NON_EMPTY_PASSWORD = vol.All(_PASSWORD_SELECTOR, vol.Length(min=1))
+_MENU_OPTIONS = [SETUP_MODE_CLOUD, SETUP_MODE_LOCAL, SETUP_MODE_CLOUD_CUTTER]
 
 
 def _auth_schema(*, include_all: bool = True) -> dict[vol.Marker, Any]:
     """Return the Aqara account fields (account + masked password).
 
     Only account + password are collected: aqara-ble bakes the app-global
-    appid/appkey and generates the per-install phone_id/client_id, so the user
-    never has to supply values captured from the app. ``include_all`` is kept for
-    signature stability but no longer changes the fields.
+    appid/appkey and generates the per-install phone_id/client_id.
     """
     del include_all
     return {
@@ -139,79 +155,129 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Confirm a discovered lock and collect its Aqara device id."""
+        """Discovered lock: present the setup-mode menu."""
         if self._discovered_address is None:
             return self.async_abort(reason="discovery_info_missing")
-
-        if user_input is not None:
-            data = _entry_data(user_input)
-            data[CONF_ADDRESS] = self._discovered_address
-            error = await _async_auth_error(self.hass, data)
-            if not error:
-                device_id, error = await _async_resolve_device_id(
-                    self.hass, data, self._discovered_address
-                )
-            if error:
-                return self.async_show_form(
-                    step_id="confirm",
-                    data_schema=self._confirm_schema(),
-                    errors={"base": error},
-                    description_placeholders={"name": self._discovered_name},
-                )
-            data[CONF_DEVICE_ID] = device_id
-            return self.async_create_entry(
-                title=self._discovered_name,
-                data=data,
-                options={
-                    CONF_REALTIME_STATE: user_input.get(
-                        CONF_REALTIME_STATE, DEFAULT_REALTIME_STATE
-                    )
-                },
-            )
-
-        return self.async_show_form(
-            step_id="confirm",
-            data_schema=self._confirm_schema(),
-            description_placeholders={"name": self._discovered_name},
-        )
+        return self.async_show_menu(step_id="confirm", menu_options=_MENU_OPTIONS)
 
     @override
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle manual setup."""
+        """Manual add: present the setup-mode menu."""
+        return self.async_show_menu(step_id="user", menu_options=_MENU_OPTIONS)
+
+    # ── mode: cloud ──────────────────────────────────────────────────────────
+    async def async_step_cloud(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Cloud mode: account + password; per-operation cloud login."""
+        return await self._async_cloud_step(SETUP_MODE_CLOUD, user_input)
+
+    async def async_step_cloud_cutter(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Cloud-cutter mode: fetch the LTMK once, then operate fully local."""
+        return await self._async_cloud_step(SETUP_MODE_CLOUD_CUTTER, user_input)
+
+    async def _async_cloud_step(
+        self, mode: str, user_input: dict[str, Any] | None
+    ) -> ConfigFlowResult:
+        """Shared cloud/cloud-cutter step (validate → resolve → maybe fetch LTMK)."""
+        manual = self._discovered_address is None
         if user_input is not None:
             data = _entry_data(user_input)
-            address = data[CONF_ADDRESS]
-            await self.async_set_unique_id(address)
-            self._abort_if_unique_id_configured()
+            address = self._discovered_address or data[CONF_ADDRESS]
+            if manual:
+                await self.async_set_unique_id(address)
+                self._abort_if_unique_id_configured()
+            data[CONF_ADDRESS] = address
             error = await _async_auth_error(self.hass, data)
+            device_id: str | None = None
             if not error:
                 device_id, error = await _async_resolve_device_id(
                     self.hass, data, address
                 )
+            ltmk_hex: str | None = None
+            if not error and mode == SETUP_MODE_CLOUD_CUTTER:
+                try:
+                    assert device_id is not None
+                    ltmk = await async_fetch_ltmk(self.hass, data, device_id)
+                    ltmk_hex = ltmk.hex()
+                except Exception:  # noqa: BLE001 - LTMK fetch failed
+                    error = "ltmk_fetch"
             if error:
                 return self.async_show_form(
-                    step_id="user",
-                    data_schema=self._user_schema(),
+                    step_id=mode,
+                    data_schema=self._cloud_schema(manual),
                     errors={"base": error},
+                    description_placeholders={"name": self._discovered_name},
                 )
             data[CONF_DEVICE_ID] = device_id
-            return self.async_create_entry(
-                title=f"Aqara U200 {address}",
-                data=data,
-                options={
-                    CONF_REALTIME_STATE: user_input.get(
-                        CONF_REALTIME_STATE, DEFAULT_REALTIME_STATE
-                    )
-                },
-            )
+            data[CONF_SETUP_MODE] = mode
+            options: dict[str, Any] = {
+                CONF_REALTIME_STATE: user_input.get(
+                    CONF_REALTIME_STATE, DEFAULT_REALTIME_STATE
+                )
+            }
+            if ltmk_hex is not None:
+                data[CONF_LTMK] = ltmk_hex
+                options[CONF_OFFLINE_MODE] = True
+            title = self._discovered_name if not manual else f"Aqara U200 {address}"
+            return self.async_create_entry(title=title, data=data, options=options)
 
         return self.async_show_form(
-            step_id="user",
-            data_schema=self._user_schema(),
+            step_id=mode,
+            data_schema=self._cloud_schema(manual),
+            description_placeholders={"name": self._discovered_name},
         )
 
+    # ── mode: local ──────────────────────────────────────────────────────────
+    async def async_step_local(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Local mode: MAC + device id + LTMK, no cloud contact at all."""
+        manual = self._discovered_address is None
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            data = _entry_data(user_input)
+            address = self._discovered_address or data[CONF_ADDRESS]
+            try:
+                ltmk_hex = parse_ltmk(data[CONF_LTMK]).hex()
+            except ValueError:
+                errors[CONF_LTMK] = "invalid_ltmk"
+            if not errors:
+                if manual:
+                    await self.async_set_unique_id(address)
+                    self._abort_if_unique_id_configured()
+                entry_data = {
+                    CONF_ADDRESS: address,
+                    CONF_DEVICE_ID: data[CONF_DEVICE_ID],
+                    CONF_LTMK: ltmk_hex,
+                    CONF_SETUP_MODE: SETUP_MODE_LOCAL,
+                }
+                title = (
+                    self._discovered_name if not manual else f"Aqara U200 {address}"
+                )
+                return self.async_create_entry(
+                    title=title,
+                    data=entry_data,
+                    options={
+                        CONF_REALTIME_STATE: user_input.get(
+                            CONF_REALTIME_STATE, DEFAULT_REALTIME_STATE
+                        ),
+                        CONF_OFFLINE_MODE: True,
+                    },
+                )
+
+        return self.async_show_form(
+            step_id=SETUP_MODE_LOCAL,
+            data_schema=self._local_schema(manual),
+            errors=errors,
+            description_placeholders={"name": self._discovered_name},
+        )
+
+    # ── reauth (cloud only) ──────────────────────────────────────────────────
     async def async_step_reauth(
         self, entry_data: Mapping[str, Any]
     ) -> ConfigFlowResult:
@@ -248,36 +314,28 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    @staticmethod
-    def _confirm_schema() -> vol.Schema:
-        """Return Bluetooth-discovery confirmation fields (account + password)."""
-        return vol.Schema(
-            {
-                vol.Required(CONF_REGION, default=DEFAULT_REGION): vol.In(
-                    SUPPORTED_REGIONS
-                ),
-                **_auth_schema(),
-                vol.Required(
-                    CONF_REALTIME_STATE, default=DEFAULT_REALTIME_STATE
-                ): bool,
-            }
+    # ── schemas ──────────────────────────────────────────────────────────────
+    def _cloud_schema(self, manual: bool) -> vol.Schema:
+        """Cloud / cloud-cutter fields (address only when not discovered)."""
+        fields: dict[vol.Marker, Any] = {}
+        if manual:
+            fields[vol.Required(CONF_ADDRESS)] = _NON_EMPTY_TEXT
+        fields[vol.Required(CONF_REGION, default=DEFAULT_REGION)] = vol.In(
+            SUPPORTED_REGIONS
         )
+        fields.update(_auth_schema())
+        fields[vol.Required(CONF_REALTIME_STATE, default=DEFAULT_REALTIME_STATE)] = bool
+        return vol.Schema(fields)
 
-    @staticmethod
-    def _user_schema() -> vol.Schema:
-        """Return manual setup fields (address + account + password)."""
-        return vol.Schema(
-            {
-                vol.Required(CONF_ADDRESS): _NON_EMPTY_TEXT,
-                vol.Required(CONF_REGION, default=DEFAULT_REGION): vol.In(
-                    SUPPORTED_REGIONS
-                ),
-                **_auth_schema(),
-                vol.Required(
-                    CONF_REALTIME_STATE, default=DEFAULT_REALTIME_STATE
-                ): bool,
-            }
-        )
+    def _local_schema(self, manual: bool) -> vol.Schema:
+        """Local fields: address (if not discovered) + device id + LTMK."""
+        fields: dict[vol.Marker, Any] = {}
+        if manual:
+            fields[vol.Required(CONF_ADDRESS)] = _NON_EMPTY_TEXT
+        fields[vol.Required(CONF_DEVICE_ID)] = _NON_EMPTY_TEXT
+        fields[vol.Required(CONF_LTMK)] = _NON_EMPTY_TEXT
+        fields[vol.Required(CONF_REALTIME_STATE, default=DEFAULT_REALTIME_STATE)] = bool
+        return vol.Schema(fields)
 
 
 class AqaraU200OptionsFlow(OptionsFlow):
@@ -295,25 +353,26 @@ class AqaraU200OptionsFlow(OptionsFlow):
         poll_hours = options.get(CONF_POLL_HOURS, DEFAULT_POLL_HOURS)
         offline = options.get(CONF_OFFLINE_MODE, DEFAULT_OFFLINE_MODE)
         wake_switch = options.get(CONF_KEYPAD_WAKE_SWITCH, DEFAULT_KEYPAD_WAKE_SWITCH)
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_REALTIME_STATE, default=realtime): bool,
-                    vol.Required(CONF_POLL_HOURS, default=poll_hours): NumberSelector(
-                        NumberSelectorConfig(
-                            min=0,
-                            max=MAX_POLL_HOURS,
-                            step=1,
-                            unit_of_measurement="h",
-                            mode=NumberSelectorMode.BOX,
-                        )
-                    ),
-                    vol.Required(CONF_OFFLINE_MODE, default=offline): bool,
-                    vol.Optional(
-                        CONF_KEYPAD_WAKE_SWITCH,
-                        description={"suggested_value": wake_switch or None},
-                    ): EntitySelector(EntitySelectorConfig(domain="switch")),
-                }
+        # A pure-local entry (no cloud account) is always offline and cannot toggle it.
+        is_local = CONF_ACCOUNT not in self.config_entry.data
+        schema: dict[vol.Marker, Any] = {
+            vol.Required(CONF_REALTIME_STATE, default=realtime): bool,
+            vol.Required(CONF_POLL_HOURS, default=poll_hours): NumberSelector(
+                NumberSelectorConfig(
+                    min=0,
+                    max=MAX_POLL_HOURS,
+                    step=1,
+                    unit_of_measurement="h",
+                    mode=NumberSelectorMode.BOX,
+                )
             ),
-        )
+        }
+        if not is_local:
+            schema[vol.Required(CONF_OFFLINE_MODE, default=offline)] = bool
+        schema[
+            vol.Optional(
+                CONF_KEYPAD_WAKE_SWITCH,
+                description={"suggested_value": wake_switch or None},
+            )
+        ] = EntitySelector(EntitySelectorConfig(domain="switch"))
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))

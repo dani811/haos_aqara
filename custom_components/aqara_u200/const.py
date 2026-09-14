@@ -21,6 +21,19 @@ DEFAULT_REALTIME_STATE = False
 # fails, so enabling it can never break control.
 CONF_OFFLINE_MODE = "offline_mode"
 DEFAULT_OFFLINE_MODE = False
+
+# The 32-byte account LTMK as hex. When present in entry data the integration
+# derives BLE control sessions locally (cloud-cut). Supplied directly in the
+# "local" setup path (no cloud account at all) or fetched once by the
+# "cloud-cutter" path. Stored in HA's config store like any other credential;
+# never logged. See docs (aqara_ble.offline_login / cloud_get_ltmk).
+CONF_LTMK = "ltmk"
+#: Setup mode chosen in the config-flow menu (informational; the entry's actual
+#: mode is inferred from which of CONF_ACCOUNT / CONF_LTMK are present).
+CONF_SETUP_MODE = "setup_mode"
+SETUP_MODE_CLOUD = "cloud"
+SETUP_MODE_LOCAL = "local"
+SETUP_MODE_CLOUD_CUTTER = "cloud_cutter"
 #: Background BLE poll interval, in hours. 0 = OFF (on-demand only, via the
 #: Refresh button / real-time listener / operations). Configurable so a
 #: battery-conscious user leaves it off and others can refresh periodically.

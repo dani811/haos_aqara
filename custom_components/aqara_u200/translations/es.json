@@ -3,24 +3,51 @@
     "step": {
       "user": {
         "title": "Configurar Aqara U200",
-        "description": "Configura la cerradura manualmente. Se recomienda el descubrimiento Bluetooth cuando esté disponible.",
+        "description": "Elige cómo se conecta esta cerradura.",
+        "menu_options": {
+          "cloud": "Nube (cuenta Aqara + contraseña)",
+          "local": "Local (sin nube; pega la clave de la cerradura)",
+          "cloud_cutter": "Nube una vez, luego local (saca la clave y corta la nube)"
+        }
+      },
+      "confirm": {
+        "title": "Configurar {name}",
+        "description": "Elige cómo se conecta esta cerradura.",
+        "menu_options": {
+          "cloud": "Nube (cuenta Aqara + contraseña)",
+          "local": "Local (sin nube; pega la clave de la cerradura)",
+          "cloud_cutter": "Nube una vez, luego local (saca la clave y corta la nube)"
+        }
+      },
+      "cloud": {
+        "title": "Aqara U200 — Nube",
+        "description": "La integración inicia sesión en la nube de Aqara en cada sesión Bluetooth. Puedes pasar a offline (sin nube) después en Opciones.",
         "data": {
           "address": "Dirección Bluetooth",
-          "device_id": "ID de dispositivo Aqara",
           "region": "Región Aqara",
           "account": "Cuenta Aqara (correo o teléfono)",
           "password": "Contraseña de Aqara",
           "realtime_state": "Estado BLE en tiempo real (gasta más batería de la cerradura)"
         }
       },
-      "confirm": {
-        "title": "Configurar {name}",
-        "description": "Confirma la cerradura detectada e indica su ID de dispositivo Aqara y tu cuenta.",
+      "cloud_cutter": {
+        "title": "Aqara U200 — Nube una vez, luego local",
+        "description": "Tu cuenta se usa UNA vez ahora para sacar el ID de dispositivo y la clave maestra de la cerradura; después la integración funciona por Bluetooth sin más llamadas a la nube.",
         "data": {
-          "device_id": "ID de dispositivo Aqara",
+          "address": "Dirección Bluetooth",
           "region": "Región Aqara",
           "account": "Cuenta Aqara (correo o teléfono)",
           "password": "Contraseña de Aqara",
+          "realtime_state": "Estado BLE en tiempo real (gasta más batería de la cerradura)"
+        }
+      },
+      "local": {
+        "title": "Aqara U200 — Local",
+        "description": "Totalmente offline: no se usa ninguna cuenta Aqara. Indica la dirección Bluetooth, el ID de dispositivo Aqara y la clave maestra de 32 bytes (LTMK) en hex. Consulta la documentación para obtener el LTMK.",
+        "data": {
+          "address": "Dirección Bluetooth",
+          "device_id": "ID de dispositivo Aqara (lumi.* / matt.*)",
+          "ltmk": "Clave maestra (LTMK), 64 caracteres hex",
           "realtime_state": "Estado BLE en tiempo real (gasta más batería de la cerradura)"
         }
       },
@@ -36,7 +63,9 @@
     "error": {
       "invalid_auth": "Aqara ha rechazado estas credenciales.",
       "cannot_connect": "No se pudieron validar las credenciales con Aqara Cloud.",
-      "no_device": "No se encontró ninguna cerradura Aqara en esta cuenta para este dispositivo."
+      "no_device": "No se encontró ninguna cerradura Aqara en esta cuenta para este dispositivo.",
+      "invalid_ltmk": "La clave maestra debe ser de 32 bytes (64 caracteres hex).",
+      "ltmk_fetch": "No se pudo obtener la clave de la cerradura desde la nube. Revisa la cuenta e inténtalo de nuevo."
     },
     "abort": {
       "already_configured": "Esta cerradura ya está configurada.",

@@ -1,4 +1,4 @@
-"""Tests for explicit Aqara cloud credential configuration and reauth."""
+"""Tests for the Aqara U200 config flow: cloud / local / cloud-cutter + reauth."""
 
 from unittest.mock import AsyncMock, patch
 
@@ -12,12 +12,16 @@ from custom_components.aqara_u200.config_flow import AqaraU200ConfigFlow
 from custom_components.aqara_u200.const import (
     CONF_ACCOUNT,
     CONF_DEVICE_ID,
+    CONF_LTMK,
+    CONF_OFFLINE_MODE,
     CONF_REGION,
+    CONF_SETUP_MODE,
     DOMAIN,
 )
 
 ADDRESS = "AA:BB:CC:DD:EE:FF"
 RESOLVED_DEVICE_ID = "matt.resolved0000"
+TEST_LTMK_HEX = "00" * 32  # synthetic 32-byte key (no real secret in the repo)
 USER_INPUT = {
     CONF_ADDRESS: ADDRESS,
     CONF_REGION: "EU",
@@ -26,12 +30,22 @@ USER_INPUT = {
 }
 
 
-async def test_user_flow_validates_and_auto_resolves_device_id(hass) -> None:
-    """The user supplies only account + password; the device id is resolved."""
+def _flow(hass, source=SOURCE_USER):
     flow = AqaraU200ConfigFlow()
     flow.hass = hass
-    flow.context = {"source": SOURCE_USER}
+    flow.context = {"source": source}
+    return flow
 
+
+async def test_user_step_shows_mode_menu(hass) -> None:
+    """Manual add offers the cloud / local / cloud-cutter menu."""
+    result = await _flow(hass).async_step_user()
+    assert result["type"] is FlowResultType.MENU
+    assert set(result["menu_options"]) == {"cloud", "local", "cloud_cutter"}
+
+
+async def test_cloud_flow_validates_and_auto_resolves_device_id(hass) -> None:
+    """Cloud mode: account + password; the device id is resolved from the account."""
     with (
         patch(
             "custom_components.aqara_u200.config_flow.async_validate_cloud_auth",
@@ -42,34 +56,112 @@ async def test_user_flow_validates_and_auto_resolves_device_id(hass) -> None:
             new=AsyncMock(return_value=RESOLVED_DEVICE_ID),
         ) as resolve,
     ):
-        result = await flow.async_step_user(dict(USER_INPUT))
+        result = await _flow(hass).async_step_cloud(dict(USER_INPUT))
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {**USER_INPUT, CONF_DEVICE_ID: RESOLVED_DEVICE_ID}
+    assert result["data"] == {
+        **USER_INPUT,
+        CONF_DEVICE_ID: RESOLVED_DEVICE_ID,
+        CONF_SETUP_MODE: "cloud",
+    }
+    assert CONF_LTMK not in result["data"]
     validate.assert_awaited_once()
     resolve.assert_awaited_once()
 
 
-async def test_user_flow_maps_invalid_auth_without_raw_details(hass) -> None:
+async def test_cloud_flow_maps_invalid_auth_without_raw_details(hass) -> None:
     """Aqara rejection details are reduced to a translated flow error key."""
-    flow = AqaraU200ConfigFlow()
-    flow.hass = hass
-    flow.context = {"source": SOURCE_USER}
-    error = CloudServiceError(
-        code=810,
-        message="raw-password-detail",
-        endpoint="raw-endpoint",
-    )
-
+    error = CloudServiceError(code=810, message="raw-password", endpoint="raw-endpoint")
     with patch(
         "custom_components.aqara_u200.config_flow.async_validate_cloud_auth",
         new=AsyncMock(side_effect=error),
     ):
-        result = await flow.async_step_user(dict(USER_INPUT))
+        result = await _flow(hass).async_step_cloud(dict(USER_INPUT))
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "invalid_auth"}
     assert "raw" not in repr(result["errors"])
+
+
+async def test_cloud_cutter_fetches_ltmk_and_stores_it_offline(hass) -> None:
+    """Cloud-cutter mode fetches the LTMK once and stores it; offline on by default."""
+    with (
+        patch(
+            "custom_components.aqara_u200.config_flow.async_validate_cloud_auth",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.aqara_u200.config_flow.async_resolve_device_id",
+            new=AsyncMock(return_value=RESOLVED_DEVICE_ID),
+        ),
+        patch(
+            "custom_components.aqara_u200.config_flow.async_fetch_ltmk",
+            new=AsyncMock(return_value=bytes.fromhex(TEST_LTMK_HEX)),
+        ) as fetch,
+    ):
+        result = await _flow(hass).async_step_cloud_cutter(dict(USER_INPUT))
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_LTMK] == TEST_LTMK_HEX
+    assert result["data"][CONF_SETUP_MODE] == "cloud_cutter"
+    assert result["options"][CONF_OFFLINE_MODE] is True
+    fetch.assert_awaited_once()
+
+
+async def test_cloud_cutter_maps_ltmk_fetch_failure(hass) -> None:
+    """A failed LTMK fetch surfaces the ltmk_fetch error, not a crash."""
+    with (
+        patch(
+            "custom_components.aqara_u200.config_flow.async_validate_cloud_auth",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.aqara_u200.config_flow.async_resolve_device_id",
+            new=AsyncMock(return_value=RESOLVED_DEVICE_ID),
+        ),
+        patch(
+            "custom_components.aqara_u200.config_flow.async_fetch_ltmk",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+    ):
+        result = await _flow(hass).async_step_cloud_cutter(dict(USER_INPUT))
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "ltmk_fetch"}
+
+
+async def test_local_flow_no_cloud(hass) -> None:
+    """Local mode stores address + device id + LTMK, no cloud credentials."""
+    result = await _flow(hass).async_step_local(
+        {
+            CONF_ADDRESS: ADDRESS,
+            CONF_DEVICE_ID: RESOLVED_DEVICE_ID,
+            CONF_LTMK: TEST_LTMK_HEX,
+        }
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {
+        CONF_ADDRESS: ADDRESS,
+        CONF_DEVICE_ID: RESOLVED_DEVICE_ID,
+        CONF_LTMK: TEST_LTMK_HEX,
+        CONF_SETUP_MODE: "local",
+    }
+    assert CONF_ACCOUNT not in result["data"]
+    assert CONF_PASSWORD not in result["data"]
+    assert result["options"][CONF_OFFLINE_MODE] is True
+
+
+async def test_local_flow_rejects_bad_ltmk(hass) -> None:
+    """A malformed LTMK yields the invalid_ltmk field error."""
+    result = await _flow(hass).async_step_local(
+        {
+            CONF_ADDRESS: ADDRESS,
+            CONF_DEVICE_ID: RESOLVED_DEVICE_ID,
+            CONF_LTMK: "not-hex",
+        }
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_LTMK: "invalid_ltmk"}
 
 
 async def test_reauth_upgrades_entry_missing_cloud_credentials(hass) -> None:
@@ -85,9 +177,8 @@ async def test_reauth_upgrades_entry_missing_cloud_credentials(hass) -> None:
         },
     )
     entry.add_to_hass(hass)
-    flow = AqaraU200ConfigFlow()
-    flow.hass = hass
-    flow.context = {"source": SOURCE_REAUTH, "entry_id": entry.entry_id}
+    flow = _flow(hass, SOURCE_REAUTH)
+    flow.context["entry_id"] = entry.entry_id
     auth_input = {
         key: value
         for key, value in USER_INPUT.items()
