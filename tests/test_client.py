@@ -521,6 +521,108 @@ async def test_async_read_auxiliary_locking_returns_the_mask() -> None:
     protocol_client.read_auxiliary_locking.assert_awaited_once_with()
 
 
+async def test_async_read_auto_lockup_delay_dispatches_to_the_library() -> None:
+    """async_read_auto_lockup_delay() calls the library's read_auto_lockup_delay (0xd6)."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(read_auto_lockup_delay=AsyncMock(return_value=30))
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+        patch("custom_components.aqara_u200.client.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await _adapter(manager).async_read_auto_lockup_delay()
+
+    assert result == 30
+    protocol_client.read_auto_lockup_delay.assert_awaited_once_with()
+
+
+async def test_async_read_auto_lock_time_dispatches_to_the_library() -> None:
+    """async_read_auto_lock_time() calls the library's read_auto_lock_time (0xae)."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(read_auto_lock_time=AsyncMock(return_value=5))
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+        patch("custom_components.aqara_u200.client.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await _adapter(manager).async_read_auto_lock_time()
+
+    assert result == 5
+    protocol_client.read_auto_lock_time.assert_awaited_once_with()
+
+
+async def test_async_read_verify_fail_time_dispatches_to_the_library() -> None:
+    """async_read_verify_fail_time() calls the library's read_verify_fail_time (0xb0)."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(read_verify_fail_time=AsyncMock(return_value=120))
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+        patch("custom_components.aqara_u200.client.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await _adapter(manager).async_read_verify_fail_time()
+
+    assert result == 120
+    protocol_client.read_verify_fail_time.assert_awaited_once_with()
+
+
+async def test_async_read_verify_fail_time_returns_none_when_undecoded() -> None:
+    """The best-effort 0xb0 read returns None (unknown) when nothing decodes.
+
+    The INFERRED decoder can come back empty on every attempt; the adapter must
+    surface that as None so the coordinator leaves the value unknown rather than
+    inventing one.
+    """
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        read_verify_fail_time=AsyncMock(return_value=None)
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+        patch("custom_components.aqara_u200.client.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await _adapter(manager).async_read_verify_fail_time()
+
+    assert result is None
+
+
 async def test_async_set_alert_volume_raises_when_the_lock_never_answers() -> None:
     """A SET write with no ACK is a real failure, not a silent no-op."""
     manager = Mock()
