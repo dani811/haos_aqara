@@ -228,6 +228,16 @@ class FullReadClient:
             UserCredential(3, 1, "fingerprint", 1, 1_700_000_300, "cc"),
         ]
 
+    async def async_read_auto_lockup_delay(self) -> int | None:
+        return 30
+
+    async def async_read_auto_lock_time(self) -> int | None:
+        return 5
+
+    async def async_read_verify_fail_time(self) -> int | None:
+        # Best-effort (INFERRED decoder): stands in for "never decodes a value".
+        return None
+
 
 async def test_initial_sync_reads_everything_on_setup(hass) -> None:
     """async_start_initial_sync must populate every value without user action.
@@ -262,6 +272,73 @@ async def test_initial_sync_reads_everything_on_setup(hass) -> None:
     assert coordinator.data.alarm_volume == "10"
     assert coordinator.data.credential_count == 3
     assert dict(coordinator.data.credentials_by_type) == {"fingerprint": 1, "password": 2}
+    # Proven timer read decoders populate; the best-effort verify_fail_time
+    # (INFERRED) stays None here without blocking anything.
+    assert coordinator.data.auto_lockup_relock_delay == 30
+    assert coordinator.data.auto_lock_on_close_delay == 5
+    assert coordinator.data.verify_fail_time is None
+
+
+class VerifyFailReadClient(FullReadClient):
+    """A client whose keypad-lockout read decoder returns a real value."""
+
+    async def async_read_verify_fail_time(self) -> int | None:
+        return 120
+
+
+async def test_verify_fail_time_populates_when_the_decoder_returns_a_value(hass) -> None:
+    """When 0xb0 decodes, the coordinator applies it to verify_fail_time."""
+    coordinator = AqaraU200Coordinator(
+        hass, _entry(), FakeBluetoothManager(), VerifyFailReadClient()
+    )
+
+    with patch("custom_components.aqara_u200.coordinator.asyncio.sleep"):
+        await coordinator.async_refresh_all()
+
+    assert coordinator.data.verify_fail_time == 120
+
+
+async def test_steady_poll_not_blocked_when_verify_fail_time_stays_none(hass) -> None:
+    """The battery loop must reach its steady interval even if 0xb0 never decodes.
+
+    verify_fail_time (INFERRED) may return None forever. It is deliberately kept
+    OUT of the ``have_all`` completeness check, so once every PROVEN value is
+    read the loop switches to the slow steady poll (``_poll_seconds``) instead of
+    hammering the fast fill interval (``ROTATION_FILL_SECONDS``) indefinitely.
+    """
+    from custom_components.aqara_u200.const import CONF_POLL_HOURS, ROTATION_FILL_SECONDS
+
+    entry = MockConfigEntry(domain="aqara_u200", data={}, options={CONF_POLL_HOURS: 2})
+    client = FullReadClient()  # every read answers except verify_fail_time -> None
+    coordinator = AqaraU200Coordinator(hass, entry, FakeBluetoothManager(), client)
+
+    intervals: list[float] = []
+    calls = {"n": 0}
+
+    async def fake_wait_for(awaitable, timeout):
+        # We never actually wait; record the requested interval and drive the loop.
+        awaitable.close()  # avoid "coroutine was never awaited"
+        intervals.append(timeout)
+        calls["n"] += 1
+        if calls["n"] >= 40:  # enough cycles to read every rotation task twice
+            coordinator._battery_stop.set()
+        raise TimeoutError
+
+    with patch(
+        "custom_components.aqara_u200.coordinator.asyncio.wait_for",
+        new=fake_wait_for,
+    ):
+        await coordinator._async_battery_loop()
+
+    expected_steady = coordinator._poll_seconds  # 2h -> 7200s, distinct from fill
+    assert expected_steady != ROTATION_FILL_SECONDS
+    # verify_fail_time never decoded, yet the loop still settled on the steady
+    # interval: its last recorded cycle interval is the slow poll, not the fill.
+    assert coordinator.data.verify_fail_time is None
+    assert coordinator.data.auto_lockup_relock_delay == 30
+    assert coordinator.data.auto_lock_on_close_delay == 5
+    assert intervals[-1] == expected_steady
+    assert expected_steady in intervals
 
 
 class FlakyConfigReadClient(FullReadClient):
