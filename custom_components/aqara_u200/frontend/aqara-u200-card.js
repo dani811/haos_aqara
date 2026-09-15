@@ -559,11 +559,18 @@ class AqaraU200Card extends HTMLElement {
         }
       }
       /* Small status dot near the base of the lock body — a cheap extra
-         state cue (amber = locked, accent = unlocked) that costs one circle,
-         not a whole new shape. */
-      .aqara-card__led { transition: fill 0.3s ease; }
-      .aqara-card__led.is-locked { fill: var(--warning-color, #ffa600); }
-      .aqara-card__led.is-unlocked { fill: var(--primary-color); }
+         state cue that costs one circle, not a whole new shape. Uses the
+         universal convention — green = locked/secure, amber = unlocked/open —
+         so the bolt state is glanceable, with a soft glow for the hero feel. */
+      .aqara-card__led { transition: fill 0.3s ease, filter 0.3s ease; }
+      .aqara-card__led.is-locked {
+        fill: var(--success-color, #2e7d32);
+        filter: drop-shadow(0 0 4px color-mix(in srgb, var(--success-color, #2e7d32) 70%, transparent));
+      }
+      .aqara-card__led.is-unlocked {
+        fill: var(--warning-color, #ffa600);
+        filter: drop-shadow(0 0 4px color-mix(in srgb, var(--warning-color, #ffa600) 70%, transparent));
+      }
       .aqara-card__badge {
         display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0;
         background: var(--card-background-color); border: 1px solid var(--divider-color);
