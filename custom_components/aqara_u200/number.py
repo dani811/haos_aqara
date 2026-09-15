@@ -1,21 +1,27 @@
-"""Number platform for Aqara U200 — settable timer values with no read decoder yet.
+"""Number platform for Aqara U200 — settable timer values.
 
 Four SET frames are byte-confirmed in ``aqara_ble`` (real live captures, see
 ``docs/devices/u200/operations.md``): the open-door alarm delay ("Retraso de
 alerta", 0x18), the keypad-lockout duration ("Bloqueo de verificación", 0xaf),
 and both auto-lock timers ("Re-bloqueo de seguridad" / "Bloqueo automático al
-cerrar", both on 0xd5). Their matching GET replies (0xb0/0xd6) answer over BLE
-but only as raw, undecoded bytes — no confirmed byte-to-seconds mapping exists
-for the read side yet, unlike alert_volume/alarm_volume in select.py.
+cerrar", 0xd5/0xad).
 
-These entities are therefore **set-only for now**: writing them sends the
-real, confirmed frame and the lock genuinely applies it (verified live,
-change-then-reread), but ``native_value`` has nothing honest to report and
-stays ``None`` (renders as unknown) rather than echo back the last value this
-integration happened to send, which would silently drift from the lock's real
-state the moment it's changed from the app or a keypad instead of here. Once
-a read-side decoder for 0xb0/0xd6 lands, wire ``native_value`` to
-``coordinator.data`` the same way select.py does for alert/alarm volume.
+Three now have a confirmed read-side decoder in ``aqara_ble`` too, so their
+``native_value`` reflects what the lock actually reports (via
+``coordinator.data``, the same way select.py reads alert/alarm volume):
+
+* ``auto_lockup_relock_delay`` — GET 0xd6 (PROVEN)
+* ``auto_lock_on_close_delay`` — GET 0xae (PROVEN)
+* ``verify_fail_time`` — GET 0xb0 (INFERRED, best-effort: may stay unknown
+  until the decoder is live-confirmed; the coordinator never blocks its steady
+  poll on it)
+
+``alert_delay`` (0x18) still has **no** confirmed read decoder, so it stays
+write-only: its ``native_value`` returns ``None`` (renders as unknown) rather
+than echo back the last value this integration happened to send, which would
+silently drift from the lock's real state the moment it's changed from the app
+or a keypad instead of here. Its entity simply passes no ``value_fn`` and so
+opts out of the read wiring cleanly.
 """
 
 from collections.abc import Awaitable, Callable
@@ -30,7 +36,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import AqaraU200ConfigEntry
 from .const import DOMAIN
-from .coordinator import AqaraU200Coordinator
+from .coordinator import AqaraU200Coordinator, AqaraU200RuntimeSnapshot
 from .exceptions import AqaraU200Error
 
 
@@ -53,6 +59,9 @@ async def async_setup_entry(
                 native_min_value=0,
                 native_max_value=255,
                 setter=coordinator.async_set_alert_delay,
+                # No confirmed read decoder for 0x18 yet -> stays write-only
+                # (value_fn omitted, native_value returns None). See docstring.
+                value_fn=None,
             ),
             AqaraU200TimerNumber(
                 entry,
@@ -63,6 +72,9 @@ async def async_setup_entry(
                 native_min_value=0,
                 native_max_value=1800,
                 setter=coordinator.async_set_verify_fail_time,
+                # Best-effort read (0xb0, INFERRED): shows the value when it
+                # decodes, stays unknown otherwise.
+                value_fn=lambda data: data.verify_fail_time,
             ),
             AqaraU200TimerNumber(
                 entry,
@@ -71,6 +83,7 @@ async def async_setup_entry(
                 native_min_value=0,
                 native_max_value=65535,
                 setter=coordinator.async_set_auto_lockup_relock_delay,
+                value_fn=lambda data: data.auto_lockup_relock_delay,
             ),
             AqaraU200TimerNumber(
                 entry,
@@ -79,13 +92,20 @@ async def async_setup_entry(
                 native_min_value=0,
                 native_max_value=65535,
                 setter=coordinator.async_set_auto_lock_on_close_delay,
+                value_fn=lambda data: data.auto_lock_on_close_delay,
             ),
         ]
     )
 
 
 class AqaraU200TimerNumber(CoordinatorEntity[AqaraU200Coordinator], NumberEntity):
-    """A byte-confirmed timer SET with no confirmed read-side decoder yet."""
+    """A byte-confirmed timer SET, optionally read back from ``coordinator.data``.
+
+    ``value_fn`` reads the entity's current value out of the coordinator
+    snapshot exactly like select.py's ``current_option``. Passing ``None`` keeps
+    the entity write-only (``native_value`` stays ``None`` -> unknown) for a key
+    whose read side has no confirmed decoder yet (``alert_delay``).
+    """
 
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.CONFIG
@@ -102,10 +122,12 @@ class AqaraU200TimerNumber(CoordinatorEntity[AqaraU200Coordinator], NumberEntity
         native_min_value: float,
         native_max_value: float,
         setter: Callable[[int], Awaitable[None]],
+        value_fn: Callable[[AqaraU200RuntimeSnapshot], float | None] | None = None,
     ) -> None:
-        """Initialize a set-only timer number entity."""
+        """Initialize a timer number entity (read-back optional via ``value_fn``)."""
         super().__init__(coordinator)
         self._setter = setter
+        self._value_fn = value_fn
         self._attr_translation_key = key
         self._attr_native_min_value = native_min_value
         self._attr_native_max_value = native_max_value
@@ -120,8 +142,15 @@ class AqaraU200TimerNumber(CoordinatorEntity[AqaraU200Coordinator], NumberEntity
 
     @property
     def native_value(self) -> float | None:
-        """Return None: no confirmed read-side decoder exists yet (see module docstring)."""
-        return None
+        """Return the value read from ``coordinator.data``, or None if write-only.
+
+        Write-only keys (no confirmed read decoder, e.g. ``alert_delay``) pass no
+        ``value_fn`` and stay None (unknown), rather than echoing the last value
+        written — see the module docstring.
+        """
+        if self._value_fn is None:
+            return None
+        return self._value_fn(self.coordinator.data)
 
     async def async_set_native_value(self, value: float) -> None:
         """Send the confirmed SET frame for ``value`` seconds over BLE."""

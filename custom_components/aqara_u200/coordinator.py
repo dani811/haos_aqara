@@ -78,6 +78,12 @@ class AqaraU200RuntimeSnapshot:
     language: str | None = None
     alert_volume: str | None = None
     alarm_volume: str | None = None
+    #: Timer settings read over BLE (feature 004-number; None until first read).
+    #: The two auto-lock delays are PROVEN read decoders; verify_fail_time is
+    #: best-effort (INFERRED) and may stay None indefinitely.
+    verify_fail_time: int | None = None
+    auto_lockup_relock_delay: int | None = None
+    auto_lock_on_close_delay: int | None = None
     #: User/credential table read over BLE (feature 003; None until first read).
     #: Count of enrolled credentials and a per-type breakdown (password/finger/
     #: NFC/...). The lock never exposes PIN plaintext, so only counts are held.
@@ -282,6 +288,9 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             "assist_turn",
             "pull_spring",
             "auxiliary_locking",
+            "auto_lockup_relock_delay",
+            "auto_lock_on_close_delay",
+            "verify_fail_time",
         )
         index = 0
         while not self._battery_stop.is_set():
@@ -290,12 +299,19 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             # one value per cycle and rotate, giving each read a clean connection.
             await self._async_do_read(tasks[index % len(tasks)])
             index += 1
+            # verify_fail_time is deliberately EXCLUDED: its read decoder is
+            # best-effort (INFERRED) and may return None on every attempt, so
+            # gating completeness on it would keep the loop on the fast fill
+            # interval forever (battery drain). The two auto-lock delays are
+            # proven, so they belong here.
             have_all = (
                 self._battery_percent is not None
                 and self._settings.door_type is not None
                 and self._settings.assist_turn is not None
                 and self._settings.pull_spring_enabled is not None
                 and self._settings.auxiliary_locking is not None
+                and self._settings.auto_lockup_relock_delay is not None
+                and self._settings.auto_lock_on_close_delay is not None
             )
             interval = self._poll_seconds if have_all else ROTATION_FILL_SECONDS
             try:
@@ -335,6 +351,9 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             "assist_turn",
             "pull_spring",
             "auxiliary_locking",
+            "auto_lockup_relock_delay",
+            "auto_lock_on_close_delay",
+            "verify_fail_time",
             "config",
             "credentials",
         )
@@ -367,6 +386,15 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             return self._settings.pull_spring_enabled is None
         if name == "auxiliary_locking":
             return self._settings.auxiliary_locking is None
+        if name == "auto_lockup_relock_delay":
+            return self._settings.auto_lockup_relock_delay is None
+        if name == "auto_lock_on_close_delay":
+            return self._settings.auto_lock_on_close_delay is None
+        if name == "verify_fail_time":
+            # Best-effort read (INFERRED decoder): async_refresh_all's single
+            # retry pass may re-attempt it, but the battery loop's steady-poll
+            # completeness check (have_all) must never wait on it.
+            return self._settings.verify_fail_time is None
         if name == "credentials":
             return self._credential_count is None
         # "config" is one burst read (volume/language) — retry it if any part
@@ -419,6 +447,12 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             return await self.client.async_read_assist_turn()
         if name == "auxiliary_locking":
             return await self.client.async_read_auxiliary_locking()
+        if name == "auto_lockup_relock_delay":
+            return await self.client.async_read_auto_lockup_delay()
+        if name == "auto_lock_on_close_delay":
+            return await self.client.async_read_auto_lock_time()
+        if name == "verify_fail_time":
+            return await self.client.async_read_verify_fail_time()
         if name == "config":
             return await self.client.async_read_settings()
         if name == "credentials":
@@ -456,6 +490,12 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             new = replace(self._settings, assist_turn=value)
         elif name == "auxiliary_locking":  # dict mask of the 4 aux toggles
             new = replace(self._settings, auxiliary_locking=value)
+        elif name == "auto_lockup_relock_delay":  # seconds (0xd6)
+            new = replace(self._settings, auto_lockup_relock_delay=value)
+        elif name == "auto_lock_on_close_delay":  # seconds (0xae)
+            new = replace(self._settings, auto_lock_on_close_delay=value)
+        elif name == "verify_fail_time":  # seconds (0xb0, best-effort)
+            new = replace(self._settings, verify_fail_time=value)
         elif name == "config":  # LockSettings burst -> volume/language/alert/alarm
             new = replace(
                 self._settings,
@@ -930,6 +970,9 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             language=self._settings.language,
             alert_volume=self._settings.alert_volume,
             alarm_volume=self._settings.alarm_volume,
+            verify_fail_time=self._settings.verify_fail_time,
+            auto_lockup_relock_delay=self._settings.auto_lockup_relock_delay,
+            auto_lock_on_close_delay=self._settings.auto_lock_on_close_delay,
             credential_count=self._credential_count,
             credentials_by_type=self._credentials_by_type,
         )

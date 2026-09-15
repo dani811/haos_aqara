@@ -88,6 +88,12 @@ class LockSettings:
     language: str | None = None
     alert_volume: str | None = None
     alarm_volume: str | None = None
+    #: Timer settings read over BLE (feature 004-number; None until read).
+    #: verify_fail_time (keypad-lockout, 0xb0) is best-effort (INFERRED decoder);
+    #: the two auto-lock delays (0xd6/0xae) are PROVEN.
+    verify_fail_time: int | None = None
+    auto_lockup_relock_delay: int | None = None
+    auto_lock_on_close_delay: int | None = None
 
 
 async def _read_battery_pct(client: ProtocolU200Client) -> int | None:
@@ -194,6 +200,22 @@ class AqaraU200Client(Protocol):
 
     async def async_read_settings(self) -> ProtocolLockSettings | None:
         """Read volume/language/alert/alarm over BLE in one burst; None if unavailable."""
+        ...
+
+    async def async_read_auto_lockup_delay(self) -> int | None:
+        """Read the 'Re-bloqueo de seguridad' delay (seconds, 0xd6); None if unavailable."""
+        ...
+
+    async def async_read_auto_lock_time(self) -> int | None:
+        """Read the 'Bloqueo automático al cerrar' delay (seconds, 0xae); None if unavailable."""
+        ...
+
+    async def async_read_verify_fail_time(self) -> int | None:
+        """Read the keypad-lockout duration (seconds, 0xb0); None if unavailable.
+
+        Best-effort: the read-side decoder is INFERRED, not yet live-confirmed, so
+        this may return ``None`` on every attempt until verified.
+        """
         ...
 
     async def async_set_assist_turn(self, *, enabled: bool) -> None:
@@ -669,6 +691,23 @@ class AqaraU200BleClientAdapter:
         return await self._async_read_retry(
             lambda c: c.read_settings(), is_useful=_has_any_field
         )
+
+    async def async_read_auto_lockup_delay(self) -> int | None:
+        """Read the 'Re-bloqueo de seguridad' delay over BLE (0xd6; None on failure)."""
+        return await self._async_read_retry(lambda c: c.read_auto_lockup_delay())
+
+    async def async_read_auto_lock_time(self) -> int | None:
+        """Read the 'Bloqueo automático al cerrar' delay over BLE (0xae; None on failure)."""
+        return await self._async_read_retry(lambda c: c.read_auto_lock_time())
+
+    async def async_read_verify_fail_time(self) -> int | None:
+        """Read the keypad-lockout duration over BLE (0xb0; None on failure).
+
+        Best-effort: the decoder is INFERRED, so this may return ``None`` every
+        time until it is live-confirmed — the coordinator must never gate its
+        steady-poll completeness check on this value (see ``_async_battery_loop``).
+        """
+        return await self._async_read_retry(lambda c: c.read_verify_fail_time())
 
     async def async_set_assist_turn(self, *, enabled: bool) -> None:
         """Set turn-assist ('giro asistido') on/off over BLE (0xe8, byte-confirmed).
