@@ -125,18 +125,29 @@ async def test_native_value_reflects_coordinator_data(hass) -> None:
     assert entities["verify_fail_time"].native_value == 120
 
 
-async def test_alert_delay_stays_write_only(hass) -> None:
-    """alert_delay has no read decoder, so native_value stays None even with reads.
-
-    It passes no ``value_fn`` and must not echo back the last written value.
-    """
+async def test_alert_delay_native_value_reflects_coordinator_data(hass) -> None:
+    """alert_delay now reads back (aqara-ble 1.17.5): native_value mirrors the
+    coordinator's read state instead of staying write-only."""
     coordinator = _coordinator(hass, NumberClient())
     _seed(
         coordinator,
+        alert_delay=45,
         auto_lockup_relock_delay=30,
         auto_lock_on_close_delay=5,
         verify_fail_time=120,
     )
+    entity = {e.translation_key: e for e in await _entities(hass, coordinator)}[
+        "alert_delay"
+    ]
+
+    assert entity.native_value == 45
+
+
+async def test_alert_delay_native_value_none_while_front_panel_asleep(hass) -> None:
+    """Front-panel gated: with no alert_delay read, native_value stays unknown (None)
+    rather than echoing the last value this integration sent."""
+    coordinator = _coordinator(hass, NumberClient())
+    _seed(coordinator, auto_lockup_relock_delay=30, auto_lock_on_close_delay=5)
     entity = {e.translation_key: e for e in await _entities(hass, coordinator)}[
         "alert_delay"
     ]
