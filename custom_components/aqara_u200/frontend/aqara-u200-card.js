@@ -199,7 +199,15 @@ class AqaraU200Card extends HTMLElement {
   // Pre-fills a sane default (the first lock entity found) when a user adds
   // this card from the picker, instead of handing them a blank/broken config.
   static getStubConfig(hass) {
-    const lockEntityId = Object.keys(hass.states).find((id) => id.startsWith("lock."));
+    // Prefer THIS integration's lock (platform aqara_u200) over any other lock
+    // on the system — otherwise, with a second lock integration installed, the
+    // card could default to the wrong device and its sibling badges (battery,
+    // signal, ...) would resolve against that device or come up empty.
+    const isLock = (id) => id.startsWith("lock.");
+    const ours = Object.keys(hass.states).find(
+      (id) => isLock(id) && hass.entities?.[id]?.platform === "aqara_u200",
+    );
+    const lockEntityId = ours || Object.keys(hass.states).find(isLock);
     return { entity: lockEntityId || "" };
   }
 
@@ -551,11 +559,18 @@ class AqaraU200Card extends HTMLElement {
         }
       }
       /* Small status dot near the base of the lock body — a cheap extra
-         state cue (amber = locked, accent = unlocked) that costs one circle,
-         not a whole new shape. */
-      .aqara-card__led { transition: fill 0.3s ease; }
-      .aqara-card__led.is-locked { fill: var(--warning-color, #ffa600); }
-      .aqara-card__led.is-unlocked { fill: var(--primary-color); }
+         state cue that costs one circle, not a whole new shape. Uses the
+         universal convention — green = locked/secure, amber = unlocked/open —
+         so the bolt state is glanceable, with a soft glow for the hero feel. */
+      .aqara-card__led { transition: fill 0.3s ease, filter 0.3s ease; }
+      .aqara-card__led.is-locked {
+        fill: var(--success-color, #2e7d32);
+        filter: drop-shadow(0 0 4px color-mix(in srgb, var(--success-color, #2e7d32) 70%, transparent));
+      }
+      .aqara-card__led.is-unlocked {
+        fill: var(--warning-color, #ffa600);
+        filter: drop-shadow(0 0 4px color-mix(in srgb, var(--warning-color, #ffa600) 70%, transparent));
+      }
       .aqara-card__badge {
         display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0;
         background: var(--card-background-color); border: 1px solid var(--divider-color);
