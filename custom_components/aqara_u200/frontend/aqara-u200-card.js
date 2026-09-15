@@ -199,7 +199,15 @@ class AqaraU200Card extends HTMLElement {
   // Pre-fills a sane default (the first lock entity found) when a user adds
   // this card from the picker, instead of handing them a blank/broken config.
   static getStubConfig(hass) {
-    const lockEntityId = Object.keys(hass.states).find((id) => id.startsWith("lock."));
+    // Prefer THIS integration's lock (platform aqara_u200) over any other lock
+    // on the system — otherwise, with a second lock integration installed, the
+    // card could default to the wrong device and its sibling badges (battery,
+    // signal, ...) would resolve against that device or come up empty.
+    const isLock = (id) => id.startsWith("lock.");
+    const ours = Object.keys(hass.states).find(
+      (id) => isLock(id) && hass.entities?.[id]?.platform === "aqara_u200",
+    );
+    const lockEntityId = ours || Object.keys(hass.states).find(isLock);
     return { entity: lockEntityId || "" };
   }
 
