@@ -4,7 +4,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from aqara_ble import CloudServiceError, LockOperation, LockSettings, UserCredential
+from aqara_ble import (
+    CloudServiceError,
+    FlowPhase,
+    LockOperation,
+    LockSettings,
+    U200ClientError,
+    UserCredential,
+)
 from bleak_retry_connector import BleakConnectionError
 
 from custom_components.aqara_u200.client import AqaraU200BleClientAdapter
@@ -263,14 +270,17 @@ async def test_async_set_alarm_volume_sends_the_confirmed_frame() -> None:
     protocol_client.read_burst.assert_awaited_once_with(["01:83020007"])
 
 
-async def test_async_set_alert_delay_sends_the_confirmed_frame() -> None:
-    """async_set_alert_delay() sends the byte-confirmed 0x18 SET frame via read_burst."""
+async def test_async_set_alert_delay_calls_the_rmw_client_method() -> None:
+    """async_set_alert_delay() delegates to the library's read-modify-write setter.
+
+    aqara-ble 1.17.5 dropped the buggy build_set_alert_delay builder (0x18 is a
+    4-field alarm struct); the adapter now calls U200Client.set_alert_delay, which
+    reads the struct, changes only no_close_delay, and rewrites it.
+    """
     manager = Mock()
     manager.async_get_ble_device.return_value = object()
     connection = SimpleNamespace(disconnect=AsyncMock())
-    protocol_client = SimpleNamespace(
-        read_burst=AsyncMock(return_value=[("18050a030a88d5", "18000c")])
-    )
+    protocol_client = SimpleNamespace(set_alert_delay=AsyncMock(return_value="18000c"))
 
     with (
         patch(
@@ -284,7 +294,58 @@ async def test_async_set_alert_delay_sends_the_confirmed_frame() -> None:
     ):
         await _adapter(manager).async_set_alert_delay(10)
 
-    protocol_client.read_burst.assert_awaited_once_with(["01:18050a030a88d5"])
+    protocol_client.set_alert_delay.assert_awaited_once_with(10)
+
+
+async def test_async_set_alert_delay_raises_when_the_struct_cannot_be_read() -> None:
+    """When set_alert_delay raises U200ClientError (front panel asleep), the adapter
+    raises AqaraU200OperationError instead of clobbering the sibling alarm fields."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        set_alert_delay=AsyncMock(
+            side_effect=U200ClientError(
+                FlowPhase.OPERATION, "unlock-alarm struct unreadable"
+            )
+        )
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+        pytest.raises(AqaraU200OperationError) as error,
+    ):
+        await _adapter(manager).async_set_alert_delay(10)
+
+    assert "keypad" in str(error.value)
+
+
+async def test_async_set_alert_delay_raises_when_the_write_does_not_land() -> None:
+    """A None reply from the session helper is a real failure, not a silent no-op."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(set_alert_delay=AsyncMock(return_value=None))
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+        pytest.raises(AqaraU200OperationError),
+    ):
+        await _adapter(manager).async_set_alert_delay(10)
 
 
 async def test_async_set_verify_fail_time_sends_the_confirmed_frame() -> None:
@@ -619,6 +680,65 @@ async def test_async_read_verify_fail_time_returns_none_when_undecoded() -> None
         patch("custom_components.aqara_u200.client.asyncio.sleep", new=AsyncMock()),
     ):
         result = await _adapter(manager).async_read_verify_fail_time()
+
+    assert result is None
+
+
+async def test_async_read_alert_delay_returns_no_close_delay() -> None:
+    """async_read_alert_delay() returns no_close_delay from the unlock-alarm struct."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        read_unlock_alarm_info=AsyncMock(
+            return_value={
+                "alarm_duration": 30,
+                "no_close_delay": 45,
+                "door_fake_close_delay": 10,
+                "unlock_alarm_delay": 5,
+            }
+        )
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+        patch("custom_components.aqara_u200.client.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await _adapter(manager).async_read_alert_delay()
+
+    assert result == 45
+    protocol_client.read_unlock_alarm_info.assert_awaited_with()
+
+
+async def test_async_read_alert_delay_returns_none_when_front_panel_asleep() -> None:
+    """When the alarm subsystem sleeps, read_unlock_alarm_info returns None and the
+    adapter surfaces None (unknown) rather than inventing a value."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        read_unlock_alarm_info=AsyncMock(return_value=None)
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+        patch("custom_components.aqara_u200.client.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await _adapter(manager).async_read_alert_delay()
 
     assert result is None
 
