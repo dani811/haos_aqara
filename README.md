@@ -125,6 +125,7 @@ switch** in the integration options or attach the bundled blueprint to it.
 - **Sensors** — battery, signal strength, door type, pull-spring retraction, system volume, language, **credentials** (count + per-type breakdown; the lock never exposes PIN plaintext).
 - **Binary sensors** — connectivity, turn-assist, pull-spring.
 - **Selects** — alert volume, alarm volume, language.
+- **Switches** — turn assist, auto-lock on close, security re-lock (bidirectional, with real read-back; the two auxiliary toggles share one wire mask and are written read-modify-write).
 - **Numbers** — open-door alarm delay, keypad-lockout duration, the two auto-lock delays.
 - **Buttons** — Refresh over Bluetooth, enable auto-lock-on-close, enable security re-lock.
 
