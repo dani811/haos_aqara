@@ -109,7 +109,8 @@ class AqaraU200TimerNumber(CoordinatorEntity[AqaraU200Coordinator], NumberEntity
     ``value_fn`` reads the entity's current value out of the coordinator
     snapshot exactly like select.py's ``current_option``. Passing ``None`` keeps
     the entity write-only (``native_value`` stays ``None`` -> unknown) for a key
-    whose read side has no confirmed decoder yet (``alert_delay``).
+    whose read side has no confirmed decoder yet. (All four timers now read back;
+    the ``None`` branch is kept for any future write-only setting.)
     """
 
     _attr_has_entity_name = True
