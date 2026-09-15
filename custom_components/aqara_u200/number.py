@@ -1,27 +1,30 @@
 """Number platform for Aqara U200 — settable timer values.
 
 Four SET frames are byte-confirmed in ``aqara_ble`` (real live captures, see
-``docs/devices/u200/operations.md``): the open-door alarm delay ("Retraso de
-alerta", 0x18), the keypad-lockout duration ("Bloqueo de verificación", 0xaf),
-and both auto-lock timers ("Re-bloqueo de seguridad" / "Bloqueo automático al
-cerrar", 0xd5/0xad).
+``docs/devices/u200/operations.md``): the alert delay ("Retraso de alerta",
+``no_close_delay`` in the 0x18 unlock-alarm struct), the keypad-lockout
+duration ("Bloqueo de verificación", 0xaf), and both auto-lock timers
+("Re-bloqueo de seguridad" / "Bloqueo automático al cerrar", 0xd5/0xad).
 
-Three now have a confirmed read-side decoder in ``aqara_ble`` too, so their
-``native_value`` reflects what the lock actually reports (via
-``coordinator.data``, the same way select.py reads alert/alarm volume):
+All four now read back over BLE, so their ``native_value`` reflects what the
+lock actually reports (via ``coordinator.data``, the same way select.py reads
+alert/alarm volume):
 
 * ``auto_lockup_relock_delay`` — GET 0xd6 (PROVEN)
 * ``auto_lock_on_close_delay`` — GET 0xae (PROVEN)
 * ``verify_fail_time`` — GET 0xb0 (INFERRED, best-effort: may stay unknown
   until the decoder is live-confirmed; the coordinator never blocks its steady
   poll on it)
+* ``alert_delay`` — read from the unlock-alarm struct (``no_close_delay``,
+  aqara-ble 1.17.5). Front-panel gated: the struct is only readable while the
+  keypad alarm subsystem is awake, so it renders as unknown while the keypad
+  sleeps (consistent with volume/language) rather than echoing the last value
+  this integration happened to send; the coordinator never blocks its steady
+  poll on it either.
 
-``alert_delay`` (0x18) still has **no** confirmed read decoder, so it stays
-write-only: its ``native_value`` returns ``None`` (renders as unknown) rather
-than echo back the last value this integration happened to send, which would
-silently drift from the lock's real state the moment it's changed from the app
-or a keypad instead of here. Its entity simply passes no ``value_fn`` and so
-opts out of the read wiring cleanly.
+The alert-delay SET is read-modify-write in the library (it rewrites the whole
+0x18 struct, changing only ``no_close_delay``) and RAISES if it cannot read the
+struct first, so it never clobbers the three sibling alarm settings.
 """
 
 from collections.abc import Awaitable, Callable
@@ -59,9 +62,11 @@ async def async_setup_entry(
                 native_min_value=0,
                 native_max_value=255,
                 setter=coordinator.async_set_alert_delay,
-                # No confirmed read decoder for 0x18 yet -> stays write-only
-                # (value_fn omitted, native_value returns None). See docstring.
-                value_fn=None,
+                # Read-back via the unlock-alarm struct (no_close_delay). Front-
+                # panel gated, so it shows the value when the keypad alarm
+                # subsystem is awake and stays unknown otherwise (like volume/
+                # language). See docstring.
+                value_fn=lambda data: data.alert_delay,
             ),
             AqaraU200TimerNumber(
                 entry,

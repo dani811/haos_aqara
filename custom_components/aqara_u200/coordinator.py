@@ -84,6 +84,10 @@ class AqaraU200RuntimeSnapshot:
     verify_fail_time: int | None = None
     auto_lockup_relock_delay: int | None = None
     auto_lock_on_close_delay: int | None = None
+    #: Alert delay ('Retraso de alerta', seconds) read over BLE (feature
+    #: 005-number; None until first read). Front-panel gated, so it usually
+    #: stays None while the keypad sleeps (same rationale as verify_fail_time).
+    alert_delay: int | None = None
     #: User/credential table read over BLE (feature 003; None until first read).
     #: Count of enrolled credentials and a per-type breakdown (password/finger/
     #: NFC/...). The lock never exposes PIN plaintext, so only counts are held.
@@ -291,6 +295,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             "auto_lockup_relock_delay",
             "auto_lock_on_close_delay",
             "verify_fail_time",
+            "alert_delay",
         )
         index = 0
         while not self._battery_stop.is_set():
@@ -303,7 +308,9 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             # best-effort (INFERRED) and may return None on every attempt, so
             # gating completeness on it would keep the loop on the fast fill
             # interval forever (battery drain). The two auto-lock delays are
-            # proven, so they belong here.
+            # proven, so they belong here. alert_delay is EXCLUDED for the same
+            # reason: it is front-panel gated and reads None whenever the keypad
+            # alarm subsystem sleeps, which is most of the time.
             have_all = (
                 self._battery_percent is not None
                 and self._settings.door_type is not None
@@ -354,6 +361,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             "auto_lockup_relock_delay",
             "auto_lock_on_close_delay",
             "verify_fail_time",
+            "alert_delay",
             "config",
             "credentials",
         )
@@ -395,6 +403,11 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             # retry pass may re-attempt it, but the battery loop's steady-poll
             # completeness check (have_all) must never wait on it.
             return self._settings.verify_fail_time is None
+        if name == "alert_delay":
+            # Front-panel gated: async_refresh_all's retry pass may re-attempt it,
+            # but the battery loop's have_all check must never wait on it (it reads
+            # None whenever the keypad alarm subsystem sleeps).
+            return self._settings.alert_delay is None
         if name == "credentials":
             return self._credential_count is None
         # "config" is one burst read (volume/language) — retry it if any part
@@ -453,6 +466,8 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             return await self.client.async_read_auto_lock_time()
         if name == "verify_fail_time":
             return await self.client.async_read_verify_fail_time()
+        if name == "alert_delay":
+            return await self.client.async_read_alert_delay()
         if name == "config":
             return await self.client.async_read_settings()
         if name == "credentials":
@@ -496,6 +511,8 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             new = replace(self._settings, auto_lock_on_close_delay=value)
         elif name == "verify_fail_time":  # seconds (0xb0, best-effort)
             new = replace(self._settings, verify_fail_time=value)
+        elif name == "alert_delay":  # seconds (no_close_delay, front-panel gated)
+            new = replace(self._settings, alert_delay=value)
         elif name == "config":  # LockSettings burst -> volume/language/alert/alarm
             new = replace(
                 self._settings,
@@ -973,6 +990,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             verify_fail_time=self._settings.verify_fail_time,
             auto_lockup_relock_delay=self._settings.auto_lockup_relock_delay,
             auto_lock_on_close_delay=self._settings.auto_lock_on_close_delay,
+            alert_delay=self._settings.alert_delay,
             credential_count=self._credential_count,
             credentials_by_type=self._credentials_by_type,
         )

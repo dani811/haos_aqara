@@ -18,7 +18,6 @@ from aqara_ble import (
     U200ClientError,
     UserCredential,
     build_set_alarm_volume,
-    build_set_alert_delay,
     build_set_alert_volume,
     build_set_assist_turn,
     build_set_auto_lock_on_close_delay_time,
@@ -94,10 +93,19 @@ class LockSettings:
     verify_fail_time: int | None = None
     auto_lockup_relock_delay: int | None = None
     auto_lock_on_close_delay: int | None = None
+    #: Alert delay ('Retraso de alerta' / no_close_delay) read over BLE, in
+    #: seconds (feature 005-number; None until read). Front-panel gated: only
+    #: readable while the keypad alarm subsystem is awake.
+    alert_delay: int | None = None
 
 
 async def _read_battery_pct(client: ProtocolU200Client) -> int | None:
     return (await client.battery()).battery_percent
+
+
+async def _read_alert_delay(client: ProtocolU200Client) -> int | None:
+    info = await client.read_unlock_alarm_info()
+    return info["no_close_delay"] if info is not None else None
 
 
 async def _read_locked(client: ProtocolU200Client) -> bool | None:
@@ -215,6 +223,14 @@ class AqaraU200Client(Protocol):
 
         Best-effort: the read-side decoder is INFERRED, not yet live-confirmed, so
         this may return ``None`` on every attempt until verified.
+        """
+        ...
+
+    async def async_read_alert_delay(self) -> int | None:
+        """Read the alert delay ('Retraso de alerta', seconds); None if unavailable.
+
+        Front-panel gated: the alarm struct is only readable while the keypad
+        alarm subsystem is awake, so this returns ``None`` while it sleeps.
         """
         ...
 
@@ -709,6 +725,17 @@ class AqaraU200BleClientAdapter:
         """
         return await self._async_read_retry(lambda c: c.read_verify_fail_time())
 
+    async def async_read_alert_delay(self) -> int | None:
+        """Read the alert delay ('Retraso de alerta') over BLE; None if unavailable.
+
+        Reads the full unlock-alarm struct and returns its ``no_close_delay``
+        field (seconds). Front-panel gated (stricter than the front-connection
+        read): ``read_unlock_alarm_info`` returns ``None`` while the keypad alarm
+        subsystem is asleep, so this returns ``None`` then too — the coordinator
+        must never gate its steady-poll completeness check on it.
+        """
+        return await self._async_read_retry(_read_alert_delay)
+
     async def async_set_assist_turn(self, *, enabled: bool) -> None:
         """Set turn-assist ('giro asistido') on/off over BLE (0xe8, byte-confirmed).
 
@@ -753,11 +780,26 @@ class AqaraU200BleClientAdapter:
         await self._async_send_write(build_set_alarm_volume(silent=silent))
 
     async def async_set_alert_delay(self, seconds: int) -> None:
-        """Set the open-door alarm delay over BLE (0x18, byte-confirmed).
+        """Set the alert delay ('Retraso de alerta') over BLE (read-modify-write).
 
-        Raises :class:`AqaraU200OperationError` if the lock didn't answer.
+        The alert delay is ``no_close_delay``, one of four fields packed into the
+        0x18 unlock-alarm struct, so ``aqara_ble.U200Client.set_alert_delay``
+        reads the whole struct, changes only that field, and rewrites it — it will
+        not clobber the three sibling alarm settings. It RAISES ``U200ClientError``
+        (front panel asleep) rather than write a half-known struct, which the
+        single-session helper surfaces as ``None``; a ``None`` reply likewise means
+        the write did not land. Either way raise :class:`AqaraU200OperationError`.
         """
-        await self._async_send_write(build_set_alert_delay(seconds))
+
+        async def _writer(client: ProtocolU200Client) -> str | None:
+            return await client.set_alert_delay(seconds)
+
+        response = await self._async_one_read(_writer)
+        if response is None:
+            raise AqaraU200OperationError(
+                "Aqara U200 could not set the alert delay: the lock's alarm "
+                "settings need the front keypad awake"
+            )
 
     async def async_set_verify_fail_time(self, seconds: int) -> None:
         """Set the keypad-lockout duration over BLE (0xaf, byte-confirmed).
