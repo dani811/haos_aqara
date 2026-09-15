@@ -102,7 +102,33 @@ class AqaraU200Card extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this._subscribeToEvents();
+    this._ensureEntityRegistry();
     this._render();
+  }
+
+  // Sibling resolution needs each entity's stable `translation_key` (see
+  // _siblingEntityId). `hass.entities` (the frontend's display registry) does NOT
+  // carry translation_key on every HA version, so relying on it left the badges
+  // empty (the naive slug fallback also misses when the entity_id is localized,
+  // e.g. `..._bateria` not `..._battery`). Fetch the FULL entity registry over the
+  // websocket once — it authoritatively carries `translation_key`, `unique_id` and
+  // `device_id` — cache it, and re-render when it lands. Best-effort: on any failure
+  // the card falls back to `hass.entities` / the slug guess, exactly as before.
+  _ensureEntityRegistry() {
+    if (this._registry || this._registryLoading || !this._hass?.callWS) return;
+    this._registryLoading = true;
+    this._hass
+      .callWS({ type: "config/entity_registry/list" })
+      .then((entries) => {
+        this._registry = entries || [];
+        this._render();
+      })
+      .catch(() => {
+        // keep _registry undefined → _siblingEntityId uses the hass.entities path
+      })
+      .finally(() => {
+        this._registryLoading = false;
+      });
   }
 
   // Dreame's own map card uses exactly this pattern — a small floating toast
@@ -219,33 +245,52 @@ class AqaraU200Card extends HTMLElement {
     return dot === -1 ? entityId : entityId.slice(dot + 1);
   }
 
-  // Sibling entities share this device (same config entry) but HA generates
-  // their entity_id from the entity's *translated display name*, not the
-  // internal Python `key` (e.g. `rssi`'s name is "Signal strength", so its
-  // entity_id is `..._signal_strength`, not `..._rssi`) — guessing the slug
-  // from `key` alone is unreliable. `hass.entities` (the entity-registry
-  // view the frontend already has) carries each entity's stable
-  // `translation_key`, which DOES match `key` exactly (it is the literal
-  // string passed to `_attr_translation_key` in the integration) — matching
-  // on that plus a shared `device_id` is reliable across renames/locales.
-  // Falls back to the naive slug guess only if `hass.entities` isn't
-  // populated yet (a first render right after login) or an explicit config
-  // override is not given.
+  // Sibling entities share this device but HA generates their entity_id from the
+  // entity's *translated display name*, not the internal Python `key` (e.g.
+  // `battery` is localized to `..._bateria`), so guessing the slug from `key` is
+  // unreliable. Resolve by the entity's stable `translation_key` (or `unique_id`
+  // suffix) on the same `device_id`:
+  //   1. the FULL websocket entity registry (this._registry) — authoritative;
+  //      carries translation_key + unique_id on every HA version;
+  //   2. `hass.entities` (the display registry) — fast path when it has
+  //      translation_key (not guaranteed across versions);
+  //   3. the naive slug guess — last resort (breaks on localized entity_ids).
+  // An explicit `<key>_entity` config override always wins.
   _siblingEntityId(def) {
     const override = this._config[`${def.key}_entity`];
     if (override) return override;
 
-    const registry = this._hass.entities;
-    const lockEntry = registry?.[this._config.entity];
-    const deviceId = lockEntry?.device_id;
-    if (registry && deviceId) {
-      for (const [entityId, entry] of Object.entries(registry)) {
-        if (entry.device_id === deviceId && entry.translation_key === def.key) {
+    const lockDeviceId =
+      this._deviceIdFromRegistry() ?? this._hass.entities?.[this._config.entity]?.device_id;
+
+    // 1. full websocket registry
+    if (this._registry && lockDeviceId) {
+      const suffix = `_${def.key}`;
+      const hit = this._registry.find(
+        (e) =>
+          e.device_id === lockDeviceId &&
+          (e.translation_key === def.key ||
+            (e.unique_id && String(e.unique_id).toLowerCase().endsWith(suffix))),
+      );
+      if (hit) return hit.entity_id;
+    }
+    // 2. display registry fast path
+    const disp = this._hass.entities;
+    if (disp && lockDeviceId) {
+      for (const [entityId, entry] of Object.entries(disp)) {
+        if (entry.device_id === lockDeviceId && entry.translation_key === def.key) {
           return entityId;
         }
       }
     }
+    // 3. slug guess
     return `${def.domain}.${this._slug()}_${def.key}`;
+  }
+
+  // The lock's device_id from the full ws registry (falls back to hass.entities).
+  _deviceIdFromRegistry() {
+    const entry = this._registry?.find((e) => e.entity_id === this._config.entity);
+    return entry?.device_id;
   }
 
   _state(entityId) {
