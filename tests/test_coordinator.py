@@ -205,6 +205,14 @@ class FullReadClient:
     async def async_read_pull_spring(self) -> tuple[bool, int] | None:
         return (True, 2)
 
+    async def async_read_auxiliary_locking(self) -> dict[str, bool] | None:
+        return {
+            "touch_to_lock": True,
+            "close_to_lock": False,
+            "resume_lock": True,
+            "any_unlock_lock": False,
+        }
+
     async def async_read_settings(self) -> LockSettings:
         return LockSettings(
             system_volume=5,
@@ -242,6 +250,12 @@ async def test_initial_sync_reads_everything_on_setup(hass) -> None:
     assert coordinator.data.assist_turn is False
     assert coordinator.data.pull_spring_enabled is True
     assert coordinator.data.pull_spring_retraction_s == 2
+    assert coordinator.data.auxiliary_locking == {
+        "touch_to_lock": True,
+        "close_to_lock": False,
+        "resume_lock": True,
+        "any_unlock_lock": False,
+    }
     assert coordinator.data.system_volume == 5
     assert coordinator.data.language == "es"
     assert coordinator.data.alert_volume == "high"
@@ -527,6 +541,105 @@ async def test_enable_auxiliary_locking_relock_calls_the_client(hass) -> None:
     await coordinator.async_enable_auxiliary_locking_relock()
 
     assert client.enable_relock_calls == 1
+
+
+class SwitchSettableClient(FullReadClient):
+    """A client whose boolean-setting SETs mutate what the next read returns.
+
+    Proves the coordinator re-reads after a SET (state shown = fresh read) and
+    that the auxiliary write is the FULL 4-toggle mask (read-modify-write).
+    """
+
+    def __init__(self) -> None:
+        self._assist_turn = False
+        self._aux = {
+            "touch_to_lock": True,
+            "close_to_lock": False,
+            "resume_lock": False,
+            "any_unlock_lock": False,
+        }
+        self.assist_calls: list[bool] = []
+        self.aux_calls: list[dict[str, bool]] = []
+
+    async def async_read_assist_turn(self) -> bool | None:
+        return self._assist_turn
+
+    async def async_read_auxiliary_locking(self) -> dict[str, bool] | None:
+        return dict(self._aux)
+
+    async def async_set_assist_turn(self, *, enabled: bool) -> None:
+        self.assist_calls.append(enabled)
+        self._assist_turn = enabled
+
+    async def async_set_auxiliary_locking(
+        self,
+        *,
+        touch_to_lock: bool,
+        close_to_lock: bool,
+        resume_lock: bool,
+        any_unlock_lock: bool,
+    ) -> None:
+        mask = {
+            "touch_to_lock": touch_to_lock,
+            "close_to_lock": close_to_lock,
+            "resume_lock": resume_lock,
+            "any_unlock_lock": any_unlock_lock,
+        }
+        self.aux_calls.append(mask)
+        self._aux = mask
+
+
+async def test_set_assist_turn_calls_the_client_then_shows_the_reread_value(hass) -> None:
+    """A turn-assist SET flows to the client and the shown state is a fresh re-read."""
+    client = SwitchSettableClient()
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+
+    await coordinator.async_set_assist_turn(True)
+
+    assert client.assist_calls == [True]
+    assert coordinator.data.assist_turn is True
+    assert coordinator.data.last_operation == "set_assist_turn"
+    assert coordinator.operation_in_progress is False
+
+
+async def test_set_auxiliary_close_to_lock_writes_full_mask_and_rereads(hass) -> None:
+    """Flipping auto-lock-on-close writes the FULL mask, preserving touch_to_lock."""
+    client = SwitchSettableClient()  # touch_to_lock already ON in the cached mask
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+    coordinator._apply_read("auxiliary_locking", dict(client._aux))
+
+    await coordinator.async_set_auxiliary_close_to_lock(True)
+
+    assert client.aux_calls == [
+        {
+            "touch_to_lock": True,
+            "close_to_lock": True,
+            "resume_lock": False,
+            "any_unlock_lock": False,
+        }
+    ]
+    assert coordinator.data.auxiliary_locking["close_to_lock"] is True
+    assert coordinator.data.auxiliary_locking["touch_to_lock"] is True
+    assert coordinator.data.last_operation == "set_auxiliary_close_to_lock"
+
+
+async def test_set_auxiliary_resume_lock_writes_full_mask(hass) -> None:
+    """Flipping security-re-lock writes the FULL mask, preserving the other bits."""
+    client = SwitchSettableClient()
+    coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
+    coordinator._apply_read("auxiliary_locking", dict(client._aux))
+
+    await coordinator.async_set_auxiliary_resume_lock(True)
+
+    assert client.aux_calls == [
+        {
+            "touch_to_lock": True,
+            "close_to_lock": False,
+            "resume_lock": True,
+            "any_unlock_lock": False,
+        }
+    ]
+    assert coordinator.data.last_operation == "set_auxiliary_resume_lock"
 
 
 async def test_set_alert_delay_propagates_a_failed_write(hass) -> None:

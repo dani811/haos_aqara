@@ -44,6 +44,11 @@ from .exceptions import (
 
 _LOGGER = logging.getLogger(__name__)
 
+#: The four auxiliary-locking toggles, in the order the library's full-mask writer
+#: (aqara_ble.build_set_auxiliary_locking) expects. The switches only expose two of
+#: them (close_to_lock, resume_lock); the others are preserved by read-modify-write.
+_AUXILIARY_TOGGLES = ("touch_to_lock", "close_to_lock", "resume_lock", "any_unlock_lock")
+
 
 @dataclass(slots=True, frozen=True)
 class AqaraU200RuntimeSnapshot:
@@ -65,6 +70,9 @@ class AqaraU200RuntimeSnapshot:
     assist_turn: bool | None = None
     pull_spring_enabled: bool | None = None
     pull_spring_retraction_s: int | None = None
+    #: Auxiliary-locking toggle mask read over BLE (feature 002-switch; None until
+    #: first read). Keys: touch_to_lock, close_to_lock, resume_lock, any_unlock_lock.
+    auxiliary_locking: dict[str, bool] | None = None
     #: Configuration settings read over BLE (feature 002; None until first read).
     system_volume: int | None = None
     language: str | None = None
@@ -267,7 +275,14 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             return  # stopped during the initial delay
         except TimeoutError:
             pass
-        tasks = ("state", "battery", "door_type", "assist_turn", "pull_spring")
+        tasks = (
+            "state",
+            "battery",
+            "door_type",
+            "assist_turn",
+            "pull_spring",
+            "auxiliary_locking",
+        )
         index = 0
         while not self._battery_stop.is_set():
             # HA's Bluetooth proxy reliably serves only ONE connect+read per burst
@@ -280,6 +295,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
                 and self._settings.door_type is not None
                 and self._settings.assist_turn is not None
                 and self._settings.pull_spring_enabled is not None
+                and self._settings.auxiliary_locking is not None
             )
             interval = self._poll_seconds if have_all else ROTATION_FILL_SECONDS
             try:
@@ -318,6 +334,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             "door_type",
             "assist_turn",
             "pull_spring",
+            "auxiliary_locking",
             "config",
             "credentials",
         )
@@ -348,6 +365,8 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             return self._settings.assist_turn is None
         if name == "pull_spring":
             return self._settings.pull_spring_enabled is None
+        if name == "auxiliary_locking":
+            return self._settings.auxiliary_locking is None
         if name == "credentials":
             return self._credential_count is None
         # "config" is one burst read (volume/language) — retry it if any part
@@ -398,6 +417,8 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             return await self.client.async_read_door_type()
         if name == "assist_turn":
             return await self.client.async_read_assist_turn()
+        if name == "auxiliary_locking":
+            return await self.client.async_read_auxiliary_locking()
         if name == "config":
             return await self.client.async_read_settings()
         if name == "credentials":
@@ -433,6 +454,8 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             new = replace(self._settings, door_type=value)
         elif name == "assist_turn":
             new = replace(self._settings, assist_turn=value)
+        elif name == "auxiliary_locking":  # dict mask of the 4 aux toggles
+            new = replace(self._settings, auxiliary_locking=value)
         elif name == "config":  # LockSettings burst -> volume/language/alert/alarm
             new = replace(
                 self._settings,
@@ -526,6 +549,38 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         await self._async_run_set_operation(
             "enable_auxiliary_locking_relock",
             lambda: self.client.async_enable_auxiliary_locking_relock(),
+        )
+
+    async def async_set_assist_turn(self, enabled: bool) -> None:
+        """Serialize a turn-assist ('giro asistido') SET, then re-read to confirm."""
+        await self._async_run_set_operation(
+            "set_assist_turn",
+            lambda: self.client.async_set_assist_turn(enabled=enabled),
+            post_read="assist_turn",
+        )
+
+    async def async_set_auxiliary_close_to_lock(self, enabled: bool) -> None:
+        """Set 'Bloqueo automático al cerrar' (read-modify-write, preserve others)."""
+        await self._async_set_auxiliary_toggle("close_to_lock", enabled)
+
+    async def async_set_auxiliary_resume_lock(self, enabled: bool) -> None:
+        """Set 'Re-bloqueo de seguridad' (read-modify-write, preserve others)."""
+        await self._async_set_auxiliary_toggle("resume_lock", enabled)
+
+    async def _async_set_auxiliary_toggle(self, toggle: str, enabled: bool) -> None:
+        """Flip one auxiliary-locking toggle, preserving the other three.
+
+        The library's writer sets the FULL 4-toggle mask (omitted toggles go OFF),
+        so this reads the cached mask (all-False if never read), flips only
+        ``toggle``, and writes the complete state — then re-reads to confirm.
+        """
+        cached = self._settings.auxiliary_locking or {}
+        mask = {name: bool(cached.get(name, False)) for name in _AUXILIARY_TOGGLES}
+        mask[toggle] = enabled
+        await self._async_run_set_operation(
+            f"set_auxiliary_{toggle}",
+            lambda: self.client.async_set_auxiliary_locking(**mask),
+            post_read="auxiliary_locking",
         )
 
     async def async_change_language(self, language: str) -> None:
@@ -870,6 +925,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             assist_turn=self._settings.assist_turn,
             pull_spring_enabled=self._settings.pull_spring_enabled,
             pull_spring_retraction_s=self._settings.pull_spring_retraction_s,
+            auxiliary_locking=self._settings.auxiliary_locking,
             system_volume=self._settings.system_volume,
             language=self._settings.language,
             alert_volume=self._settings.alert_volume,
