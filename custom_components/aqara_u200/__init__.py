@@ -35,6 +35,7 @@ PLATFORMS: tuple[Platform, ...] = (
     Platform.BUTTON,
     Platform.SELECT,
     Platform.NUMBER,
+    Platform.SWITCH,
 )
 
 # This integration is configured through the UI (config entries) only; it takes

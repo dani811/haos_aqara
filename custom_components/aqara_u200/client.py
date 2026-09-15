@@ -20,8 +20,10 @@ from aqara_ble import (
     build_set_alarm_volume,
     build_set_alert_delay,
     build_set_alert_volume,
+    build_set_assist_turn,
     build_set_auto_lock_on_close_delay_time,
     build_set_auto_lockup_delay_time,
+    build_set_auxiliary_locking,
     build_set_auxiliary_locking_on_close_enabled,
     build_set_auxiliary_locking_relock_enabled,
     build_set_verify_fail_time,
@@ -76,6 +78,9 @@ class LockSettings:
     assist_turn: bool | None = None
     pull_spring_enabled: bool | None = None
     pull_spring_retraction_s: int | None = None
+    #: Auxiliary-locking toggle mask read over BLE (feature 002-switch). Keys:
+    #: touch_to_lock, close_to_lock, resume_lock, any_unlock_lock. None until read.
+    auxiliary_locking: dict[str, bool] | None = None
     #: Configuration settings read in one burst (feature 002). alert_volume is a
     #: confirmed enum ('high'/'medium'/'low'/'silent'); system_volume is a raw level
     #: byte, language a code ('es' confirmed), alarm_volume the raw value hex.
@@ -179,8 +184,35 @@ class AqaraU200Client(Protocol):
         """Read the pull-spring setting over BLE → (enabled, retraction_s) or None."""
         ...
 
+    async def async_read_auxiliary_locking(self) -> dict[str, bool] | None:
+        """Read the auxiliary-locking toggle mask over BLE; None if unavailable.
+
+        Keys: ``touch_to_lock``, ``close_to_lock``, ``resume_lock``,
+        ``any_unlock_lock``.
+        """
+        ...
+
     async def async_read_settings(self) -> ProtocolLockSettings | None:
         """Read volume/language/alert/alarm over BLE in one burst; None if unavailable."""
+        ...
+
+    async def async_set_assist_turn(self, *, enabled: bool) -> None:
+        """Set turn-assist ('giro asistido') on/off over BLE; raises if unacked."""
+        ...
+
+    async def async_set_auxiliary_locking(
+        self,
+        *,
+        touch_to_lock: bool,
+        close_to_lock: bool,
+        resume_lock: bool,
+        any_unlock_lock: bool,
+    ) -> None:
+        """Write the FULL 4-toggle auxiliary-locking mask over BLE; raises if unacked.
+
+        Omitted toggles are turned OFF, so callers must pass the complete desired
+        state (read-modify-write is the coordinator's job).
+        """
         ...
 
     async def async_set_alert_volume(self, level: int) -> None:
@@ -603,6 +635,10 @@ class AqaraU200BleClientAdapter:
         """Read the pull-spring setting over BLE → (enabled, retraction_s) or None."""
         return await self._async_read_retry(lambda c: c.read_pull_spring())
 
+    async def async_read_auxiliary_locking(self) -> dict[str, bool] | None:
+        """Read the auxiliary-locking toggle mask over BLE (None on failure)."""
+        return await self._async_read_retry(lambda c: c.read_auxiliary_locking())
+
     async def async_read_settings(self) -> ProtocolLockSettings | None:
         """Read volume/language/alert/alarm over BLE in one burst.
 
@@ -632,6 +668,35 @@ class AqaraU200BleClientAdapter:
 
         return await self._async_read_retry(
             lambda c: c.read_settings(), is_useful=_has_any_field
+        )
+
+    async def async_set_assist_turn(self, *, enabled: bool) -> None:
+        """Set turn-assist ('giro asistido') on/off over BLE (0xe8, byte-confirmed).
+
+        Raises :class:`AqaraU200OperationError` if the lock didn't answer.
+        """
+        await self._async_send_write(build_set_assist_turn(enabled=enabled))
+
+    async def async_set_auxiliary_locking(
+        self,
+        *,
+        touch_to_lock: bool,
+        close_to_lock: bool,
+        resume_lock: bool,
+        any_unlock_lock: bool,
+    ) -> None:
+        """Write the FULL 4-toggle auxiliary-locking mask over BLE (0xc4, byte-confirmed).
+
+        Omitted toggles are turned OFF; callers pass the complete desired state.
+        Raises :class:`AqaraU200OperationError` if the lock didn't answer.
+        """
+        await self._async_send_write(
+            build_set_auxiliary_locking(
+                touch_to_lock=touch_to_lock,
+                close_to_lock=close_to_lock,
+                resume_lock=resume_lock,
+                any_unlock_lock=any_unlock_lock,
+            )
         )
 
     async def async_set_alert_volume(self, level: int) -> None:
