@@ -412,6 +412,115 @@ async def test_async_enable_auxiliary_locking_relock_sends_the_confirmed_frame()
     protocol_client.read_burst.assert_awaited_once_with(["01:c404000098"])
 
 
+async def test_async_set_assist_turn_on_sends_the_confirmed_frame() -> None:
+    """async_set_assist_turn(enabled=True) sends the byte-confirmed 0xe8 ON frame."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        read_burst=AsyncMock(return_value=[("e8016804", "e8000c")])
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        await _adapter(manager).async_set_assist_turn(enabled=True)
+
+    protocol_client.read_burst.assert_awaited_once_with(["01:e8016804"])
+
+
+async def test_async_set_assist_turn_off_sends_the_confirmed_frame() -> None:
+    """async_set_assist_turn(enabled=False) sends the byte-confirmed 0xe8 OFF frame."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        read_burst=AsyncMock(return_value=[("e8006805", "e8000c")])
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        await _adapter(manager).async_set_assist_turn(enabled=False)
+
+    protocol_client.read_burst.assert_awaited_once_with(["01:e8006805"])
+
+
+async def test_async_set_auxiliary_locking_sends_the_full_mask_frame() -> None:
+    """async_set_auxiliary_locking() writes the byte-confirmed 0xc4 full-mask frame."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(
+        read_burst=AsyncMock(return_value=[("c403000798", "c4000c")])
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        await _adapter(manager).async_set_auxiliary_locking(
+            touch_to_lock=True,
+            close_to_lock=True,
+            resume_lock=False,
+            any_unlock_lock=False,
+        )
+
+    # touch_to_lock + close_to_lock set -> mask 0x03 (see aqara_ble.build_set_auxiliary_locking)
+    protocol_client.read_burst.assert_awaited_once_with(["01:c403000798"])
+
+
+async def test_async_read_auxiliary_locking_returns_the_mask() -> None:
+    """async_read_auxiliary_locking() returns the library's decoded toggle mask."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    mask = {
+        "touch_to_lock": False,
+        "close_to_lock": True,
+        "resume_lock": False,
+        "any_unlock_lock": False,
+    }
+    protocol_client = SimpleNamespace(
+        read_auxiliary_locking=AsyncMock(return_value=mask)
+    )
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+    ):
+        result = await _adapter(manager).async_read_auxiliary_locking()
+
+    assert result == mask
+    protocol_client.read_auxiliary_locking.assert_awaited_once_with()
+
+
 async def test_async_set_alert_volume_raises_when_the_lock_never_answers() -> None:
     """A SET write with no ACK is a real failure, not a silent no-op."""
     manager = Mock()
