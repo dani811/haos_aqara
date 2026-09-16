@@ -6,7 +6,6 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.aqara_u200 import number as number_platform
 from custom_components.aqara_u200.bluetooth import AqaraU200BluetoothState
-from custom_components.aqara_u200.client import LockSettings
 from custom_components.aqara_u200.coordinator import AqaraU200Coordinator
 from custom_components.aqara_u200.number import AqaraU200TimerNumber
 
@@ -42,12 +41,6 @@ class NumberClient:
 
     async def async_set_auto_lock_on_close_delay(self, seconds: int) -> None:
         self.auto_lock_on_close_calls.append(seconds)
-
-    async def async_read_settings(self) -> LockSettings:
-        # A timer SET confirms itself with the default post-read ("config").
-        return LockSettings(
-            system_volume=5, language="es", alert_volume="high", alarm_volume="10"
-        )
 
 
 def _coordinator(hass, client, *, reachable: bool = True) -> AqaraU200Coordinator:

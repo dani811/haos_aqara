@@ -210,6 +210,22 @@ class AqaraU200Client(Protocol):
         """Read volume/language/alert/alarm over BLE in one burst; None if unavailable."""
         ...
 
+    async def async_read_system_volume(self) -> int | None:
+        """Read the system-volume level over BLE (0xc3), in its own burst; None if unavailable."""
+        ...
+
+    async def async_read_language(self) -> str | None:
+        """Read the spoken-prompt language code over BLE (0x68), in its own burst; None if unavailable."""
+        ...
+
+    async def async_read_alarm_volume(self) -> str | None:
+        """Read the alarm (siren) volume over BLE (0x84), in its own burst; None if unavailable."""
+        ...
+
+    async def async_read_alert_volume(self) -> str | None:
+        """Read the alert volume over BLE (0x1a blob), in its own burst; None if unavailable."""
+        ...
+
     async def async_read_auto_lockup_delay(self) -> int | None:
         """Read the 'Re-bloqueo de seguridad' delay (seconds, 0xd6); None if unavailable."""
         ...
@@ -707,6 +723,27 @@ class AqaraU200BleClientAdapter:
         return await self._async_read_retry(
             lambda c: c.read_settings(), is_useful=_has_any_field
         )
+
+    async def async_read_system_volume(self) -> int | None:
+        """Read the system-volume level over BLE in its own burst (0xc3; None on failure).
+
+        One value per connection: the lock reliably serves only one read per BLE
+        burst, so system_volume/language/alarm/alert are each read in a separate
+        session (the batched ``async_read_settings`` above dropped all but the last).
+        """
+        return await self._async_read_retry(lambda c: c.read_system_volume())
+
+    async def async_read_language(self) -> str | None:
+        """Read the spoken-prompt language code over BLE in its own burst (0x68; None on failure)."""
+        return await self._async_read_retry(lambda c: c.read_language())
+
+    async def async_read_alarm_volume(self) -> str | None:
+        """Read the alarm (siren) volume over BLE in its own burst (0x84; None on failure)."""
+        return await self._async_read_retry(lambda c: c.read_alarm_volume())
+
+    async def async_read_alert_volume(self) -> str | None:
+        """Read the alert volume over BLE in its own burst (0x1a blob; None on failure)."""
+        return await self._async_read_retry(lambda c: c.read_alert_volume())
 
     async def async_read_auto_lockup_delay(self) -> int | None:
         """Read the 'Re-bloqueo de seguridad' delay over BLE (0xd6; None on failure)."""

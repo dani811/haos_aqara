@@ -115,7 +115,15 @@
         "name": "System volume"
       },
       "language": {
-        "name": "Language"
+        "name": "Language",
+        "state": {
+          "es": "Spanish",
+          "en": "English",
+          "fr": "French",
+          "de": "German",
+          "it": "Italian",
+          "pt": "Portuguese"
+        }
       },
       "credentials": {
         "name": "Credentials"

@@ -115,7 +115,15 @@
         "name": "Volumen del sistema"
       },
       "language": {
-        "name": "Idioma"
+        "name": "Idioma",
+        "state": {
+          "es": "Español",
+          "en": "Inglés",
+          "fr": "Francés",
+          "de": "Alemán",
+          "it": "Italiano",
+          "pt": "Portugués"
+        }
       },
       "credentials": {
         "name": "Credenciales"

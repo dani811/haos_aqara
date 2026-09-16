@@ -120,6 +120,11 @@ class AqaraU200Language(_AqaraU200SensorBase):
     """The lock's configured language, read over BLE (0x68)."""
 
     _attr_translation_key = "language"
+    # ENUM + options so HA localizes the state (es -> "Español"/"Spanish") via the
+    # entity.sensor.language.state.* translations — mirrors door_type. Without this
+    # HA shows the raw code.
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["es", "en", "fr", "de", "it", "pt"]
 
     def __init__(self, entry: AqaraU200ConfigEntry, coordinator: AqaraU200Coordinator) -> None:
         """Initialize the language sensor."""
@@ -127,8 +132,9 @@ class AqaraU200Language(_AqaraU200SensorBase):
 
     @property
     def native_value(self) -> str | None:
-        """Return the language code (e.g. 'es'), or None until read."""
-        return self.coordinator.data.language
+        """Return the language code (e.g. 'es'), or None until read/if unrecognized."""
+        value = self.coordinator.data.language
+        return value if value in self._attr_options else None
 
 
 class AqaraU200Credentials(_AqaraU200SensorBase):
