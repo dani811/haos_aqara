@@ -296,6 +296,13 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             "auto_lock_on_close_delay",
             "verify_fail_time",
             "alert_delay",
+            # Each config setting is read in its OWN burst: the lock reliably
+            # serves only one read per BLE burst, so the old single "config"
+            # (batched) read dropped all but the last opcode (see client.py).
+            "system_volume",
+            "language",
+            "alert_volume",
+            "alarm_volume",
         )
         index = 0
         while not self._battery_stop.is_set():
@@ -310,7 +317,10 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             # interval forever (battery drain). The two auto-lock delays are
             # proven, so they belong here. alert_delay is EXCLUDED for the same
             # reason: it is front-panel gated and reads None whenever the keypad
-            # alarm subsystem sleeps, which is most of the time.
+            # alarm subsystem sleeps, which is most of the time. The four config
+            # reads (system_volume/language/alert_volume/alarm_volume) are EXCLUDED
+            # too for the same reason: front-panel gated, so gating completeness on
+            # them would keep the loop on the fast fill interval forever.
             have_all = (
                 self._battery_percent is not None
                 and self._settings.door_type is not None
@@ -343,8 +353,8 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         On-demand: rotates through state/battery/settings sequentially so each read
         gets a clean connection (HA's Bluetooth proxy dislikes back-to-back reads).
 
-        Confirmed live 2026-08-31: one full pass can silently drop a read (the
-        'config' burst — volume/language — failed once through a flaky proxy
+        Confirmed live 2026-08-31: one full pass can silently drop a read (a
+        config read — e.g. language — failed once through a flaky proxy
         connection while every other read succeeded). ``_async_do_read`` already
         swallows failures per-item so one bad read doesn't abort the rotation;
         this adds a single retry pass over just the names still unread after the
@@ -362,7 +372,11 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             "auto_lock_on_close_delay",
             "verify_fail_time",
             "alert_delay",
-            "config",
+            # Read each config setting in its own burst (see _async_battery_loop).
+            "system_volume",
+            "language",
+            "alert_volume",
+            "alarm_volume",
             "credentials",
         )
         await self._async_refresh_pass(order, gap_before_first=False)
@@ -408,16 +422,17 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             # but the battery loop's have_all check must never wait on it (it reads
             # None whenever the keypad alarm subsystem sleeps).
             return self._settings.alert_delay is None
+        if name == "system_volume":
+            return self._settings.system_volume is None
+        if name == "language":
+            return self._settings.language is None
+        if name == "alert_volume":
+            return self._settings.alert_volume is None
+        if name == "alarm_volume":
+            return self._settings.alarm_volume is None
         if name == "credentials":
             return self._credential_count is None
-        # "config" is one burst read (volume/language) — retry it if any part
-        # of the burst is still missing.
-        return (
-            self._settings.system_volume is None
-            or self._settings.language is None
-            or self._settings.alert_volume is None
-            or self._settings.alarm_volume is None
-        )
+        return False
 
     async def _async_do_read(self, name: str) -> None:
         """Read ONE value over BLE (guarded), updating the snapshot on change.
@@ -468,8 +483,14 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             return await self.client.async_read_verify_fail_time()
         if name == "alert_delay":
             return await self.client.async_read_alert_delay()
-        if name == "config":
-            return await self.client.async_read_settings()
+        if name == "system_volume":
+            return await self.client.async_read_system_volume()
+        if name == "language":
+            return await self.client.async_read_language()
+        if name == "alert_volume":
+            return await self.client.async_read_alert_volume()
+        if name == "alarm_volume":
+            return await self.client.async_read_alarm_volume()
         if name == "credentials":
             return await self.client.async_read_user_table()
         return await self.client.async_read_pull_spring()
@@ -513,14 +534,14 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             new = replace(self._settings, verify_fail_time=value)
         elif name == "alert_delay":  # seconds (no_close_delay, front-panel gated)
             new = replace(self._settings, alert_delay=value)
-        elif name == "config":  # LockSettings burst -> volume/language/alert/alarm
-            new = replace(
-                self._settings,
-                system_volume=value.system_volume,
-                language=value.language,
-                alert_volume=value.alert_volume,
-                alarm_volume=value.alarm_volume,
-            )
+        elif name == "system_volume":  # raw level byte (0xc3), own burst
+            new = replace(self._settings, system_volume=value)
+        elif name == "language":  # language code (0x68), own burst
+            new = replace(self._settings, language=value)
+        elif name == "alert_volume":  # alert-volume enum (0x1a blob), own burst
+            new = replace(self._settings, alert_volume=value)
+        elif name == "alarm_volume":  # alarm (siren) volume (0x84), own burst
+            new = replace(self._settings, alarm_volume=value)
         else:  # pull_spring -> (enabled, retraction_seconds)
             new = replace(
                 self._settings,
@@ -553,13 +574,17 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
     async def async_set_alert_volume(self, level: int) -> None:
         """Serialize an alert-volume SET, then re-read it to confirm the real value."""
         await self._async_run_set_operation(
-            "set_alert_volume", lambda: self.client.async_set_alert_volume(level)
+            "set_alert_volume",
+            lambda: self.client.async_set_alert_volume(level),
+            post_read="alert_volume",
         )
 
     async def async_set_alarm_volume(self, *, silent: bool) -> None:
         """Serialize an alarm-volume SET, then re-read it to confirm the real value."""
         await self._async_run_set_operation(
-            "set_alarm_volume", lambda: self.client.async_set_alarm_volume(silent=silent)
+            "set_alarm_volume",
+            lambda: self.client.async_set_alarm_volume(silent=silent),
+            post_read="alarm_volume",
         )
 
     async def async_set_alert_delay(self, seconds: int) -> None:
@@ -678,6 +703,7 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
             await self._async_run_set_operation(
                 f"change_language:{language}",
                 lambda: self.client.async_change_language(language),
+                post_read="language",
             )
         finally:
             persistent_notification.async_dismiss(self.hass, notification_id)
@@ -868,15 +894,19 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
         *,
         require_presence: str | None = None,
         presence_window: float = DATA_PRESENCE_WINDOW_SECONDS,
-        post_read: str = "config",
+        post_read: str | None = None,
     ) -> None:
         """Run one settings-write operation, then re-read to confirm.
 
         Unlike ``_async_run_operation`` (lock/unlock), a SET write has no bolt
         position to observe — it confirms itself by re-reading the value it
-        touched (``post_read``: ``config`` for settings, ``credentials`` for a
-        credential add/delete), so the entity ends up showing what the lock
-        actually reports now, not an optimistic guess of what the write did.
+        touched (``post_read`` is the individual read name, e.g. ``alert_volume``
+        for a volume SET, ``credentials`` for a credential add/delete), so the
+        entity ends up showing what the lock actually reports now, not an
+        optimistic guess of what the write did. ``post_read=None`` skips the
+        re-read (used by the timer/enable SETs, whose own value has no re-read to
+        reveal here — the batched "config" read they used to fire never touched
+        their field anyway).
 
         ``require_presence`` (a human-readable reason) gates the write on the front
         keypad panel being awake — ensured before ``action`` runs, and raised as
@@ -901,9 +931,10 @@ class AqaraU200Coordinator(DataUpdateCoordinator[AqaraU200RuntimeSnapshot]):
                         require_presence, window=presence_window
                     )
                 await action()
-                value = await self._async_read_one(post_read)
-                if value is not None:
-                    self._apply_read(post_read, value)
+                if post_read is not None:
+                    value = await self._async_read_one(post_read)
+                    if value is not None:
+                        self._apply_read(post_read, value)
             except AqaraU200AuthenticationError as err:
                 self._last_error_type = type(err).__name__
                 self._entry.async_start_reauth(self.hass)

@@ -630,6 +630,80 @@ async def test_async_read_auto_lock_time_dispatches_to_the_library() -> None:
     protocol_client.read_auto_lock_time.assert_awaited_once_with()
 
 
+@pytest.mark.parametrize(
+    ("adapter_method", "library_method", "value"),
+    [
+        ("async_read_system_volume", "read_system_volume", 5),
+        ("async_read_language", "read_language", "es"),
+        ("async_read_alarm_volume", "read_alarm_volume", "10"),
+        ("async_read_alert_volume", "read_alert_volume", "high"),
+    ],
+)
+async def test_each_config_read_dispatches_to_its_own_library_burst(
+    adapter_method: str, library_method: str, value: object
+) -> None:
+    """Each config setting reads in its OWN burst via the matching library method.
+
+    The batched ``read_settings`` dropped all but the last opcode (the lock serves
+    only one reliable read per burst), so volume/language/alarm/alert are now each
+    read one-per-connection through their own ``read_*`` library call.
+    """
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(**{library_method: AsyncMock(return_value=value)})
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+        patch("custom_components.aqara_u200.client.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await getattr(_adapter(manager), adapter_method)()
+
+    assert result == value
+    getattr(protocol_client, library_method).assert_awaited_once_with()
+
+
+@pytest.mark.parametrize(
+    ("adapter_method", "library_method"),
+    [
+        ("async_read_system_volume", "read_system_volume"),
+        ("async_read_language", "read_language"),
+        ("async_read_alarm_volume", "read_alarm_volume"),
+        ("async_read_alert_volume", "read_alert_volume"),
+    ],
+)
+async def test_each_config_read_returns_none_when_the_burst_is_empty(
+    adapter_method: str, library_method: str
+) -> None:
+    """A dropped/empty burst surfaces as None so the coordinator leaves it unknown."""
+    manager = Mock()
+    manager.async_get_ble_device.return_value = object()
+    connection = SimpleNamespace(disconnect=AsyncMock())
+    protocol_client = SimpleNamespace(**{library_method: AsyncMock(return_value=None)})
+
+    with (
+        patch(
+            "custom_components.aqara_u200.client.establish_connection",
+            new=AsyncMock(return_value=connection),
+        ),
+        patch(
+            "custom_components.aqara_u200.client.ProtocolU200Client.from_gatt",
+            return_value=protocol_client,
+        ),
+        patch("custom_components.aqara_u200.client.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await getattr(_adapter(manager), adapter_method)()
+
+    assert result is None
+
+
 async def test_async_read_verify_fail_time_dispatches_to_the_library() -> None:
     """async_read_verify_fail_time() calls the library's read_verify_fail_time (0xb0)."""
     manager = Mock()

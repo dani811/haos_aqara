@@ -12,7 +12,6 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.aqara_u200.bluetooth import AqaraU200BluetoothState
-from custom_components.aqara_u200.client import LockSettings
 from custom_components.aqara_u200.const import (
     CONF_KEYPAD_WAKE_SWITCH,
     DOMAIN,
@@ -213,13 +212,17 @@ class FullReadClient:
             "any_unlock_lock": False,
         }
 
-    async def async_read_settings(self) -> LockSettings:
-        return LockSettings(
-            system_volume=5,
-            language="es",
-            alert_volume="high",
-            alarm_volume="10",
-        )
+    async def async_read_system_volume(self) -> int | None:
+        return 5
+
+    async def async_read_language(self) -> str | None:
+        return "es"
+
+    async def async_read_alert_volume(self) -> str | None:
+        return "high"
+
+    async def async_read_alarm_volume(self) -> str | None:
+        return "10"
 
     async def async_read_user_table(self) -> list[UserCredential] | None:
         return [
@@ -405,26 +408,25 @@ async def test_steady_poll_not_blocked_when_verify_fail_time_stays_none(hass) ->
 
 
 class FlakyConfigReadClient(FullReadClient):
-    """Fails the 'config' burst exactly once, like the flaky proxy seen live."""
+    """Fails the language config read exactly once, like the flaky proxy seen live."""
 
     def __init__(self) -> None:
-        self.settings_calls = 0
+        self.language_calls = 0
 
-    async def async_read_settings(self) -> LockSettings:
-        self.settings_calls += 1
-        if self.settings_calls == 1:
+    async def async_read_language(self) -> str | None:
+        self.language_calls += 1
+        if self.language_calls == 1:
             raise TimeoutError("proxy dropped the connection")
-        return await super().async_read_settings()
+        return await super().async_read_language()
 
 
 async def test_refresh_all_retries_a_read_that_failed_once(hass) -> None:
     """A single failed read must not stay unpopulated for the whole rotation.
 
-    Confirmed live 2026-08-31: the 'config' burst (volume/language) can fail
-    once through a flaky Bluetooth-proxy connection while every other read in
-    the same rotation succeeds. async_refresh_all must retry just that gap
-    instead of leaving it 'unknown' until the next restart or a manual
-    Refresh press.
+    Confirmed live 2026-08-31: a config read (volume/language) can fail once
+    through a flaky Bluetooth-proxy connection while every other read in the
+    same rotation succeeds. async_refresh_all must retry just that gap instead
+    of leaving it 'unknown' until the next restart or a manual Refresh press.
     """
     client = FlakyConfigReadClient()
     coordinator = AqaraU200Coordinator(hass, _entry(), FakeBluetoothManager(), client)
@@ -432,7 +434,7 @@ async def test_refresh_all_retries_a_read_that_failed_once(hass) -> None:
     with patch("custom_components.aqara_u200.coordinator.asyncio.sleep"):
         await coordinator.async_refresh_all()
 
-    assert client.settings_calls == 2
+    assert client.language_calls == 2
     assert coordinator.data.language == "es"
     assert coordinator.data.system_volume == 5
     # Everything else read fine on the first pass — no wasted retries.
@@ -489,9 +491,9 @@ class SettableClient(FullReadClient):
 
     Mirrors the real lock's behavior closely enough to prove the coordinator
     re-reads after a SET rather than optimistically guessing: the value shown
-    afterward is whatever this fake's ``read_settings`` reports, which only
-    changes because the SET call mutated it — not because the coordinator
-    assumed the requested value stuck.
+    afterward is whatever this fake's individual ``async_read_alert_volume`` /
+    ``async_read_alarm_volume`` reports, which only changes because the SET call
+    mutated it — not because the coordinator assumed the requested value stuck.
     """
 
     def __init__(self) -> None:
@@ -500,13 +502,11 @@ class SettableClient(FullReadClient):
         self.set_alert_volume_calls: list[int] = []
         self.set_alarm_volume_calls: list[bool] = []
 
-    async def async_read_settings(self) -> LockSettings:
-        return LockSettings(
-            system_volume=5,
-            language="es",
-            alert_volume=self.alert_volume,
-            alarm_volume=self.alarm_volume,
-        )
+    async def async_read_alert_volume(self) -> str | None:
+        return self.alert_volume
+
+    async def async_read_alarm_volume(self) -> str | None:
+        return self.alarm_volume
 
     async def async_set_alert_volume(self, level: int) -> None:
         self.set_alert_volume_calls.append(level)
@@ -553,13 +553,8 @@ class LanguageClient(FullReadClient):
         self.language = "es"
         self.change_language_calls: list[str] = []
 
-    async def async_read_settings(self) -> LockSettings:
-        return LockSettings(
-            system_volume=5,
-            language=self.language,
-            alert_volume="high",
-            alarm_volume="10",
-        )
+    async def async_read_language(self) -> str | None:
+        return self.language
 
     async def async_change_language(self, language: str) -> None:
         self.change_language_calls.append(language)
