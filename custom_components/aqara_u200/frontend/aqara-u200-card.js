@@ -8,9 +8,10 @@
  * entity — free, built-in inline editing the moment any of these becomes a
  * select/number entity, no custom per-setting editor to build/maintain here.
  *
- * The card itself DOES ship a minimal GUI config editor (`AqaraU200CardEditor`
- * below, via `static getConfigElement()`) so picking the lock entity doesn't
- * require hand-written YAML — see that class for what it covers.
+ * The card ships a GUI config editor via `static getConfigForm()` (HA renders the
+ * schema with its own always-loaded form controls) so picking the lock entity
+ * doesn't require hand-written YAML and the editor can't hang on a missing
+ * `ha-entity-picker`.
  *
  * Every badge here is bound to an entity that already exists and is already
  * read over BLE with confirmed bytes (see docs/devices/u200/operations.md in
@@ -213,13 +214,17 @@ class AqaraU200Card extends HTMLElement {
     return { columns: 8, rows: 6, min_columns: 6, min_rows: 5 };
   }
 
-  // GUI card editor (Settings → Dashboards → Edit → pick this card, or the
-  // "Show code editor" toggle's opposite) — before this, the only way to set
-  // the required `entity` was to hand-write YAML. Returning a custom element
-  // here is the whole contract; HA mounts it, feeds it `hass`/`config`, and
-  // listens for `config-changed` events (see AqaraU200CardEditor below).
-  static getConfigElement() {
-    return document.createElement("aqara-u200-card-editor");
+  // GUI card editor via the built-in ha-form (getConfigForm), NOT a custom editor
+  // element. A custom editor that renders <ha-entity-picker> hangs ("continuously
+  // loading") on HA versions where that element is not auto-loaded; getConfigForm
+  // hands HA a schema and HA renders it with its own (always-loaded) form controls.
+  static getConfigForm() {
+    return {
+      schema: [
+        { name: "entity", required: true, selector: { entity: { domain: "lock" } } },
+        { name: "name", selector: { text: {} } },
+      ],
+    };
   }
 
   // Pre-fills a sane default (the first lock entity found) when a user adds
@@ -229,11 +234,12 @@ class AqaraU200Card extends HTMLElement {
     // on the system — otherwise, with a second lock integration installed, the
     // card could default to the wrong device and its sibling badges (battery,
     // signal, ...) would resolve against that device or come up empty.
+    const stateIds = Object.keys(hass?.states || {});
     const isLock = (id) => id.startsWith("lock.");
-    const ours = Object.keys(hass.states).find(
-      (id) => isLock(id) && hass.entities?.[id]?.platform === "aqara_u200",
+    const ours = stateIds.find(
+      (id) => isLock(id) && hass?.entities?.[id]?.platform === "aqara_u200",
     );
-    const lockEntityId = ours || Object.keys(hass.states).find(isLock);
+    const lockEntityId = ours || stateIds.find(isLock);
     return { entity: lockEntityId || "" };
   }
 
@@ -309,8 +315,17 @@ class AqaraU200Card extends HTMLElement {
     const locked = rawState === "locked" ? true : rawState === "unlocked" ? false : null;
     const controlReady = Boolean(lockState);
 
-    const leftBadges = BADGE_DEFS.filter((d) => d.side === "left").map((def) => this._buildBadge(def));
-    const rightBadges = BADGE_DEFS.filter((d) => d.side === "right").map((def) => this._buildBadge(def));
+    // A single badge failing to resolve must never blank/hang the whole card
+    // (defensive: an unexpected hass/registry shape shouldn't take the card down).
+    const safeBadge = (def) => {
+      try {
+        return this._buildBadge(def);
+      } catch (_err) {
+        return "";
+      }
+    };
+    const leftBadges = BADGE_DEFS.filter((d) => d.side === "left").map(safeBadge);
+    const rightBadges = BADGE_DEFS.filter((d) => d.side === "right").map(safeBadge);
 
     this.innerHTML = `
       <ha-card header="${this._escape(title)}">
@@ -679,74 +694,6 @@ class AqaraU200Card extends HTMLElement {
   }
 }
 
-// --- GUI config editor ------------------------------------------------
-//
-// A minimal visual editor: pick the lock entity (required) and an optional
-// display name. Per-badge entity overrides (`<key>_entity`) stay YAML-only
-// for now — they're an escape hatch for a mismatched entity registry, not
-// something most users need — but the one field everyone needs (which lock)
-// no longer requires opening the raw YAML editor at all.
-class AqaraU200CardEditor extends HTMLElement {
-  setConfig(config) {
-    this._config = config || {};
-    this._render();
-  }
-
-  set hass(hass) {
-    this._hass = hass;
-    this._render();
-  }
-
-  _render() {
-    // HA's editor lifecycle doesn't guarantee setConfig() runs before hass is
-    // first assigned — confirmed live 2026-08-31: assigning .hass on a freshly
-    // created editor (before .setConfig()) threw here because _config was
-    // still undefined. Guard on both, not just hass.
-    if (!this._hass || !this._config) return;
-
-    if (!this._built) {
-      this.innerHTML = `
-        <div class="aqara-editor">
-          <ha-entity-picker id="entity" label="Lock entity (required)" allow-custom-entity></ha-entity-picker>
-          <ha-textfield id="name" label="Card name (optional)"></ha-textfield>
-        </div>
-        <style>
-          .aqara-editor { display: flex; flex-direction: column; gap: 16px; padding: 8px 0; }
-        </style>
-      `;
-      this._entityPicker = this.querySelector("#entity");
-      this._nameField = this.querySelector("#name");
-      this._entityPicker.includeDomains = ["lock"];
-      this._entityPicker.addEventListener("value-changed", (ev) => {
-        ev.stopPropagation();
-        this._emitConfig({ entity: ev.detail.value });
-      });
-      this._nameField.addEventListener("input", (ev) => {
-        this._emitConfig({ name: ev.target.value || undefined });
-      });
-      this._built = true;
-    }
-
-    this._entityPicker.hass = this._hass;
-    this._entityPicker.value = this._config.entity || "";
-    this._nameField.value = this._config.name || "";
-  }
-
-  _emitConfig(patch) {
-    const next = { ...this._config, ...patch };
-    if (next.name === undefined) delete next.name;
-    this._config = next;
-    this.dispatchEvent(
-      new CustomEvent("config-changed", {
-        detail: { config: next },
-        bubbles: true,
-        composed: true,
-      })
-    );
-  }
-}
-
-customElements.define("aqara-u200-card-editor", AqaraU200CardEditor);
 customElements.define("aqara-u200-card", AqaraU200Card);
 
 window.customCards = window.customCards || [];
@@ -754,5 +701,5 @@ window.customCards.push({
   type: "aqara-u200-card",
   name: "Aqara U200",
   description: "Illustrated card for the Aqara U200 BLE integration — lock/unlock, and every confirmed setting as a badge around the drawing.",
-  preview: true,
+  preview: false,
 });
