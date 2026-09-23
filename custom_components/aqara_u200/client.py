@@ -47,7 +47,9 @@ from .const import (
     BLE_READ_ATTEMPTS,
     BLE_READ_GAP_SECONDS,
     CONF_ACCOUNT,
+    CONF_DISTRICT,
     CONF_REGION,
+    DEFAULT_DISTRICT,
     DEFAULT_REGION,
 )
 from .exceptions import (
@@ -322,13 +324,15 @@ class AqaraU200Client(Protocol):
 def build_cloud_auth(config: Mapping[str, Any]) -> CloudAuthManager:
     """Build library-owned cloud auth from Home Assistant config-entry data.
 
-    Only account + password are needed: aqara-ble bakes the app-global
-    appid/appkey and generates the per-install phone_id/client_id.
+    Aqara separates cloud region (for example EU) from the account's actual
+    country/district. New entries persist the district explicitly; old entries
+    keep the historical ES fallback for backward compatibility.
     """
     return CloudAuthManager(
         account=config[CONF_ACCOUNT],
         password=config[CONF_PASSWORD],
         region=config.get(CONF_REGION, DEFAULT_REGION),
+        district=config.get(CONF_DISTRICT, DEFAULT_DISTRICT),
     )
 
 

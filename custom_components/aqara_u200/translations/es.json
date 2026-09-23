@@ -11,7 +11,7 @@
         }
       },
       "confirm": {
-        "title": "Configurar {name}",
+        "title": "Configurar Aqara U200",
         "description": "Elige cómo se conecta esta cerradura.",
         "menu_options": {
           "cloud": "Nube (cuenta Aqara + contraseña)",
@@ -25,6 +25,7 @@
         "data": {
           "address": "Dirección Bluetooth",
           "region": "Región Aqara",
+          "district": "País de la cuenta Aqara",
           "account": "Cuenta Aqara (correo o teléfono)",
           "password": "Contraseña de Aqara",
           "device_id": "ID de dispositivo (opcional)",
@@ -40,6 +41,7 @@
         "data": {
           "address": "Dirección Bluetooth",
           "region": "Región Aqara",
+          "district": "País de la cuenta Aqara",
           "account": "Cuenta Aqara (correo o teléfono)",
           "password": "Contraseña de Aqara",
           "device_id": "ID de dispositivo (opcional)",
