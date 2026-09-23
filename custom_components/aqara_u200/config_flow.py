@@ -12,8 +12,8 @@ Setup offers three modes (a menu on both manual add and Bluetooth discovery):
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import logging
+from collections.abc import Mapping
 from typing import Any, override
 from urllib.error import HTTPError
 
