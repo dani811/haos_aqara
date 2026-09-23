@@ -7,6 +7,11 @@ DOMAIN = "aqara_u200"
 CONF_ACCOUNT = "account"
 CONF_DEVICE_ID = "device_id"
 CONF_REGION = "region"
+# Aqara's private login distinguishes the cloud area (EU/US/...) from the
+# account's actual country/district. Keep ES as the legacy fallback for entries
+# created before this field existed; new config flows persist the real country.
+CONF_DISTRICT = "district"
+DEFAULT_DISTRICT = "ES"
 
 # Opt-in: keep a persistent BLE session listening for real-time state (ff62),
 # including external changes (Matter/key/keypad). Costs extra lock battery.
