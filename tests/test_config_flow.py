@@ -8,10 +8,12 @@ from homeassistant.const import CONF_ADDRESS, CONF_PASSWORD
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.aqara_u200.client import build_cloud_auth
 from custom_components.aqara_u200.config_flow import AqaraU200ConfigFlow
 from custom_components.aqara_u200.const import (
     CONF_ACCOUNT,
     CONF_DEVICE_ID,
+    CONF_DISTRICT,
     CONF_LTMK,
     CONF_OFFLINE_MODE,
     CONF_REGION,
@@ -25,6 +27,7 @@ TEST_LTMK_HEX = "00" * 32  # synthetic 32-byte key (no real secret in the repo)
 USER_INPUT = {
     CONF_ADDRESS: ADDRESS,
     CONF_REGION: "EU",
+    CONF_DISTRICT: "CZ",
     CONF_ACCOUNT: "account@example.com",
     CONF_PASSWORD: "password",
 }
@@ -102,6 +105,38 @@ async def test_cloud_flow_maps_invalid_auth_without_raw_details(hass) -> None:
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "invalid_auth"}
     assert "raw" not in repr(result["errors"])
+
+
+async def test_cloud_flow_logs_only_sanitized_error_metadata(hass, caplog) -> None:
+    """Unexpected cloud failures are diagnosable without leaking exception text."""
+    secret = "account@example.com:super-secret-password"
+    with patch(
+        "custom_components.aqara_u200.config_flow.async_validate_cloud_auth",
+        new=AsyncMock(side_effect=RuntimeError(secret)),
+    ):
+        result = await _flow(hass).async_step_cloud(dict(USER_INPUT))
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}
+    assert "RuntimeError" in caplog.text
+    assert secret not in caplog.text
+    assert "super-secret-password" not in caplog.text
+
+
+def test_build_cloud_auth_uses_account_country_and_keeps_legacy_fallback() -> None:
+    """The real account country reaches aqara-ble; old entries still default to ES."""
+    auth = build_cloud_auth(USER_INPUT)
+    assert auth.region == "EU"
+    assert auth.district == "CZ"
+
+    legacy = build_cloud_auth(
+        {
+            CONF_ACCOUNT: USER_INPUT[CONF_ACCOUNT],
+            CONF_PASSWORD: USER_INPUT[CONF_PASSWORD],
+            CONF_REGION: "EU",
+        }
+    )
+    assert legacy.district == "ES"
 
 
 async def test_cloud_cutter_fetches_ltmk_and_stores_it_offline(hass) -> None:
