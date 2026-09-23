@@ -13,7 +13,9 @@ Setup offers three modes (a menu on both manual add and Bluetooth discovery):
 from __future__ import annotations
 
 from collections.abc import Mapping
+import logging
 from typing import Any, override
+from urllib.error import HTTPError
 
 import voluptuous as vol
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
@@ -26,6 +28,7 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_ADDRESS, CONF_PASSWORD
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.selector import (
+    CountrySelector,
     EntitySelector,
     EntitySelectorConfig,
     NumberSelector,
@@ -47,6 +50,7 @@ from .client import (
 from .const import (
     CONF_ACCOUNT,
     CONF_DEVICE_ID,
+    CONF_DISTRICT,
     CONF_KEYPAD_WAKE_SWITCH,
     CONF_LTMK,
     CONF_OFFLINE_MODE,
@@ -54,6 +58,7 @@ from .const import (
     CONF_REALTIME_STATE,
     CONF_REGION,
     CONF_SETUP_MODE,
+    DEFAULT_DISTRICT,
     DEFAULT_KEYPAD_WAKE_SWITCH,
     DEFAULT_OFFLINE_MODE,
     DEFAULT_POLL_HOURS,
@@ -66,6 +71,8 @@ from .const import (
     SETUP_MODE_LOCAL,
     SUPPORTED_REGIONS,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 _NON_EMPTY_TEXT = vol.All(str, vol.Strip, vol.Length(min=1))
 _PASSWORD_SELECTOR = TextSelector(
@@ -100,11 +107,30 @@ def _entry_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _safe_auth_error_chain(err: BaseException) -> str:
+    """Return diagnostic exception metadata without messages or credentials."""
+    parts: list[str] = []
+    current: BaseException | None = err
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, HTTPError):
+            parts.append(f"HTTPError(status={current.code})")
+        else:
+            parts.append(type(current).__name__)
+        current = current.__cause__ or current.__context__
+    return " <- ".join(parts)
+
+
 async def _async_auth_error(hass: HomeAssistant, data: Mapping[str, Any]) -> str | None:
     """Validate Aqara credentials and return a sanitized flow error key."""
     try:
         await async_validate_cloud_auth(hass, data)
     except Exception as err:  # noqa: BLE001 - map all library/network failures
+        _LOGGER.warning(
+            "Aqara cloud credential validation failed (%s)",
+            _safe_auth_error_chain(err),
+        )
         return "invalid_auth" if is_invalid_auth_error(err) else "cannot_connect"
     return None
 
@@ -158,12 +184,12 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
         """Discovered lock: present the setup-mode menu."""
         if self._discovered_address is None:
             return self.async_abort(reason="discovery_info_missing")
-        # The confirm menu title uses {name}; a menu still needs the placeholder or
-        # the frontend throws a formatjs MISSING_VALUE for it.
+        # The discovered device name is already the flow title via
+        # context["title_placeholders"]. Keep the step title static: Home Assistant
+        # does not use description_placeholders to interpolate a step title.
         return self.async_show_menu(
             step_id="confirm",
             menu_options=_MENU_OPTIONS,
-            description_placeholders={"name": self._discovered_name},
         )
 
     @override
@@ -337,6 +363,8 @@ class AqaraU200ConfigFlow(ConfigFlow, domain=DOMAIN):
         fields[vol.Required(CONF_REGION, default=DEFAULT_REGION)] = vol.In(
             SUPPORTED_REGIONS
         )
+        account_country = (self.hass.config.country or DEFAULT_DISTRICT).upper()
+        fields[vol.Required(CONF_DISTRICT, default=account_country)] = CountrySelector()
         fields.update(_auth_schema())
         fields[vol.Optional(CONF_DEVICE_ID)] = _NON_EMPTY_TEXT
         fields[vol.Required(CONF_REALTIME_STATE, default=DEFAULT_REALTIME_STATE)] = bool
