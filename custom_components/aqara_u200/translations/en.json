@@ -11,7 +11,7 @@
         }
       },
       "confirm": {
-        "title": "Set up {name}",
+        "title": "Set up Aqara U200",
         "description": "Choose how this lock connects.",
         "menu_options": {
           "cloud": "Cloud (Aqara account + password)",
@@ -25,6 +25,7 @@
         "data": {
           "address": "Bluetooth address",
           "region": "Aqara region",
+          "district": "Aqara account country",
           "account": "Aqara account (email or phone)",
           "password": "Aqara password",
           "device_id": "Device ID (optional)",
@@ -40,6 +41,7 @@
         "data": {
           "address": "Bluetooth address",
           "region": "Aqara region",
+          "district": "Aqara account country",
           "account": "Aqara account (email or phone)",
           "password": "Aqara password",
           "device_id": "Device ID (optional)",
